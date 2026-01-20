@@ -1,0 +1,6 @@
+datasets/
+logs/
+.flake8
+.venv/
+.vscode/
+.DS_Store
