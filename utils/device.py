@@ -22,18 +22,23 @@ def get_best_device(logger):
 
 def get_free_gpu():
     command = subprocess.run(
-        ["nvidia-smi", "--query-gpu=index,memory.free", "--format=csv,noheader"],
+        [
+            "nvidia-smi",
+            "--query-gpu=index,memory.free,memory.total",
+            "--format=csv,noheader",
+        ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     ).stdout.decode("utf-8")
 
     cuda = []
     for line in command.splitlines():
-        match = re.match(r"(\d+), (\d+) MiB", line)
+        match = re.match(r"(\d+), (\d+) MiB, (\d+) MiB", line)
         if match:
             gpu = int(match[1])
             free = int(match[2])
-            cuda.append((gpu, free))
+            total = int(match[3])
+            cuda.append((gpu, round(free / total, 2)))
     if cuda:
         return f"cuda:{max(cuda, key=lambda x: x[1])[0]}"
     else:

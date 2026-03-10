@@ -1,5 +1,6 @@
 import os
 import torch
+from collections import defaultdict
 
 
 class Trainer:
@@ -13,6 +14,7 @@ class Trainer:
         train_loader,
         val_loader=None,
         evaluator=None,
+        early_stopper=None,
         scheduler=None,
         grad_clip=None,
         checkpoint_dir=None,
@@ -26,6 +28,7 @@ class Trainer:
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.evaluator = evaluator
+        self.early_stopper = early_stopper
         self.scheduler = scheduler
         self.grad_clip = grad_clip
         self.checkpoint_dir = checkpoint_dir
@@ -105,12 +108,12 @@ class Trainer:
                     f"Loss: {running_loss / batch_id:.4f}"
                 )
 
-        avg_loss = running_loss / len(self.train_loader)
+        metrics = {"train_loss": running_loss / len(self.train_loader)}
         if aux_loss:
-            self.logger.info(
-                f"Epoch {epoch}: Aux Loss: {aux_loss/len(self.train_loader):.4f}"
-            )
-        return avg_loss
+            metrics["train_aux"] = aux_loss / len(self.train_loader)
+            metrics["train_bce"] = metrics["train_loss"] - metrics["train_aux"]
+            self.logger.info(f"Epoch {epoch}: Aux Loss: {metrics['train_aux']:.4f}")
+        return metrics
 
     def _validate_epoch(self):
         self.model.eval()
@@ -121,7 +124,7 @@ class Trainer:
             for batch in self.val_loader:
                 inputs, targets = batch
                 inputs = inputs.to(self.device)
-                targets.to(self.device)
+                targets = targets.to(self.device)
 
                 outputs = self.model(inputs)
                 losses = self.criterion(outputs, targets)
@@ -135,25 +138,33 @@ class Trainer:
             if extras:
                 aux_loss += extras.item()
 
-        avg_loss = running_loss / len(self.val_loader)
+        metrics = {"val_loss": running_loss / len(self.val_loader)}
         if aux_loss:
-            self.logger.info(
-                f"Val aux loss: {aux_loss/len(self.val_loader):.4f}"
-            )
-        return avg_loss
+            metrics["val_aux"] = aux_loss / len(self.val_loader)
+            metrics["val_bce"] = metrics["val_loss"] - metrics["val_aux"]
+            self.logger.info(f"Val aux loss: {metrics['val_aux']:.4f}")
+        return metrics
 
     def train(self, epochs):
         # best_val_loss = float("inf")
+        self.logger.info(f"Training for {self.train_loader.batch_size} batches")
+        losses = defaultdict(list)
         for epoch in range(self.start_epoch, epochs + 1):
-            train_loss = self._train_epoch(epoch)
-            self.logger.info(f"Epoch {epoch}: Train Loss: {train_loss:.4f}")
+            train_losses = self._train_epoch(epoch)
+            for key, value in train_losses.items():
+                losses[key].append(value)
+                if key == "train_loss":
+                    self.logger.info(f"Epoch {epoch}: Train Loss: {value:.4f}")
 
             if self.val_loader is not None:
-                val_loss = self._validate_epoch()
-                self.logger.info(f"Epoch {epoch}: Val Loss: {val_loss:.4f}")
+                val_losses = self._validate_epoch()
+                for key, value in val_losses.items():
+                    losses[key].append(value)
+                    if key == "val_loss":
+                        self.logger.info(f"Epoch {epoch}: Val Loss: {value:.4f}")
 
                 if self.evaluator is not None:
-                    metrics = self.evaluator(
+                    results = self.evaluator(
                         model=self.model,
                         dataloader=self.val_loader,
                         device=self.device,
@@ -161,7 +172,7 @@ class Trainer:
 
                     self.logger.info(
                         f"Epoch {epoch}: "
-                        + ", ".join(f"{k}={v:.4f}" for k, v in metrics.items())
+                        + ", ".join(f"{k}={v:.4f}" for k, v in results.items())
                     )
 
                 if self.scheduler:
@@ -169,6 +180,25 @@ class Trainer:
 
                 if self.checkpoint_dir is not None:
                     self._save_checkpoint(epoch, "last.pt")
-                    # if val_loss < best_val_loss:
-                    #     best_val_loss = val_loss
-                    #     self._save_checkpoint(epoch, "best.pt")
+
+                if self.early_stopper and losses.get("val_loss", []):
+                    best, stop = self.early_stopper.check(losses.get("val_loss")[-1])
+
+                    if best and self.checkpoint_dir:
+                        self._save_checkpoint(epoch, "best.pt")
+
+                    if stop:
+                        self.logger.info(f"Early stopping triggered at epoch {epoch}.")
+                        break
+
+        metrics = {}
+        if self.evaluator is not None:
+            metrics = self.evaluator(
+                model=self.model,
+                dataloader=self.val_loader,
+                device=self.device,
+                analyze=True,
+            )
+        metrics.update(dict(losses))
+
+        return metrics

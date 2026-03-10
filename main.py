@@ -1,64 +1,103 @@
+import argparse
 import torch
+import numpy as np
+import os
 
 from configs import config
-from data.preprocess import load_WOS, get_classes, get_hierarchy
+from data.preprocess import (
+    load_FORC,
+    load_WOS,
+    get_classes,
+    get_hierarchy,
+    get_levels,
+    init_seed,
+)
+from data.embedding import EmbeddingModel
 from models.MLP import MLPModule
 from utils.logger import setup_logger
 from utils.device import get_best_device
+from utils.helper import plot_loss, plot_metrics
+from utils.callbacks import EarlyStopper
 from data.dataloader import get_dataloader
 from data.splits import kfold_splits
 from training.evaluator import HierarchicalEvaluator
 from training.trainer import Trainer
-
 from training.losses import HierarchicalBCELoss
 
 if __name__ == "__main__":
-    data_path = config.WOS_PATH
-    taxonomy = config.WOS_TAXONOMY
+    init_seed(config.SEED)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset", default="forc", help="dataset name to use")
+    args = parser.parse_args()
+    dataset = args.dataset
 
-    logger = setup_logger(config.LOG_NAME)
-    logger.info(f"Starting {logger.name} for {data_path} and {taxonomy}")
+    if dataset == "forc":
+        data_path = config.FORC_PATH
+        taxonomy = config.FORC_TAXONOMY
+        root = config.FORC_ROOT
+        load = load_FORC
+    elif dataset == "wos":
+        data_path = config.WOS_PATH
+        taxonomy = config.WOS_TAXONOMY
+        root = config.WOS_ROOT
+        load = load_WOS
+    logger = setup_logger(dataset)
+
+    logger.info(f"Starting {logger.name} run")
+
     device = get_best_device(logger)
 
-    classes = get_classes(taxonomy, root_excl="root")
-    # hierarchy = get_hierarchy(config.FORC_TAXONOMY, classes, root="NLP")
+    classes = get_classes(taxonomy, root_excl=root)
+
     hierarchy_root = get_hierarchy(taxonomy, classes)
-    hierarchy = get_hierarchy(taxonomy, classes, root_excl="root")
+    levels = get_levels(hierarchy_root)
+    hierarchy = get_hierarchy(taxonomy, classes, root_excl=root)
 
-    X, Y = load_WOS(data_path, classes)
-    splits = kfold_splits(X, Y)
+    data, labels = load(data_path, classes)
+    emb_model = EmbeddingModel(config.EMB_MODEL, logger, device=device)
+    embeddings = emb_model.compute_embeddings(data, config.EMB_BATCH, config.EMB_SIZE)
+    splits = kfold_splits(embeddings, labels)
 
-    for fold, (train_idx, val_idx) in enumerate(splits):
-        logger.info(f"Starting cv fold {fold+1}")
+    results = []
+
+    for fold, (train_idx, val_idx) in enumerate(splits, start=1):
+        logger.info(f"Starting cv fold {fold}")
 
         train_loader = get_dataloader(
-            X.iloc[train_idx],
-            Y[train_idx],
+            embeddings[train_idx],
+            labels[train_idx],
             batch=config.BATCH_SIZE,
             shuffle=True,
-            device=device,
         )
         val_loader = get_dataloader(
-            X.iloc[val_idx],
-            Y[val_idx],
+            embeddings[val_idx],
+            labels[val_idx],
             batch=config.BATCH_SIZE,
             shuffle=False,
-            device=device,
         )
 
         input_dim = next(iter(train_loader))[0].size(1)
 
-        model = MLPModule(input_dim, config.HIDDEN_DIM, Y.shape[1], config.DROPOUT)
+        model = MLPModule(input_dim, config.HIDDEN_DIM, labels.shape[1], config.DROPOUT)
         logger.info(f"Model: {model}")
         optimizer = torch.optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
         logger.info(f"Optimizer: {optimizer}")
-        criterion = HierarchicalBCELoss(hierarchy, lambda_reg=0.5)
+        # criterion = HybridFocalLoss(hierarchy, config.LAMBDA, config.GAMMA)
+        # criterion = FocalLoss(config.GAMMA)
+        criterion = HierarchicalBCELoss(hierarchy, lambda_reg=config.LAMBDA)
         # criterion = torch.nn.BCEWithLogitsLoss()
         logger.info(f"Criterion: {criterion}")
 
         # evaluator = Evaluator(average=config.AVERAGES)
-        evaluator = HierarchicalEvaluator(hierarchy_root, average=config.AVERAGES)
+        evaluator = HierarchicalEvaluator(
+            hierarchy_root,
+            classes,
+            levels,
+            average=config.AVERAGES,
+            filename=config.LOG_ANALYSIS,
+        )
         logger.info(f"Evaluator: {evaluator}")
+        early_stopper = EarlyStopper(patience=config.PATIENCE)
         trainer = Trainer(
             model,
             optimizer,
@@ -66,8 +105,42 @@ if __name__ == "__main__":
             device,
             logger,
             train_loader,
-            val_loader,
-            evaluator,
+            val_loader=val_loader,
+            evaluator=evaluator,
+            early_stopper=early_stopper,
             # checkpoint_dir=config.CHECKPOINT_PATH,
         )
-        trainer.train(config.EPOCHS)
+
+        result = trainer.train(config.EPOCHS)
+        plot_loss(
+            {key: value for key, value in result.items() if isinstance(value, list)},
+            os.path.join(config.LOG_PATH, f"loss_{fold}.png"),
+            logger,
+        )
+        results.append(result)
+
+    summary = {}
+    averaged_losses = {}
+
+    for key in results[0].keys():
+
+        if isinstance(results[0][key], list):
+            losses = [fold_res[key] for fold_res in results]
+
+            length = min(len(fold_losses) for fold_losses in losses)
+            trunc_losses = [fold_losses[:length] for fold_losses in losses]
+
+            averaged_losses[key] = np.mean(trunc_losses, axis=0).tolist()
+
+        else:
+            metrics = [fold_metrics[key] for fold_metrics in results]
+            summary[key] = {
+                "mean": np.mean(metrics),
+                "std": np.std(metrics),
+            }
+
+    for metric, stats in summary.items():
+        logger.info(f"{metric}: mean={stats['mean']:.4f}, std={stats['std']:.4f}")
+
+    plot_loss(averaged_losses, os.path.join(config.LOG_PATH, "avg_loss.png"), logger)
+    plot_metrics(summary, os.path.join(config.LOG_PATH, "metrics.png"), logger)

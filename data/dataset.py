@@ -125,3 +125,16 @@ class TextDataset(Dataset):
         else:
             embeddings = self._compute_embeddings(batch)
         return embeddings
+
+
+class EmbeddingDataset(Dataset):
+    def __init__(self, embeddings, labels):
+        super().__init__()
+        self.embeddings = embeddings
+        self.labels = labels
+
+    def __len__(self):
+        return len(self.embeddings)
+
+    def __getitem__(self, idx):
+        return self.embeddings[idx], self.labels[idx]
