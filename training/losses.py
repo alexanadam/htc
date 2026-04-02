@@ -5,16 +5,21 @@ from data.preprocess import get_parents_list, get_predecessor_map
 
 
 class HierarchicalBCELoss(nn.Module):
-    def __init__(self, hierarchy, lambda_reg=1):
+    def __init__(self, hierarchy, lambda_reg=1, weighted=False):
         super().__init__()
         self.bce = nn.BCEWithLogitsLoss()
-        self.hierarchy = hierarchy
         self.lambda_reg = lambda_reg
-        self.parent_map = get_parents_list(self.hierarchy)
+        self.parent_map = get_parents_list(hierarchy)
+        if weighted:
+            self.weight = torch.ones(len(hierarchy), dtype=torch.float32)
+        else:
+            self.weight = None
 
     def forward(self, logits, targets):
         device = logits.device
 
+        if self.weight is not None:
+            self.bce.weight = self.weight.to(device)
         bce_loss = self.bce(logits, targets)
         # probs = torch.sigmoid(logits)
 
@@ -29,6 +34,8 @@ class HierarchicalBCELoss(nn.Module):
 
                 # violation = -target_child * torch.log(p_parent)
                 violation = -target_child * log_p
+                if self.weight is not None:
+                    violation *= self.weight[parent_idx]
                 hier_loss += violation.mean()
                 count += 1
 
@@ -101,7 +108,7 @@ class FocalLoss(nn.Module):
 class HierarchicalFocalLoss(nn.Module):
     def __init__(self, hierarchy, lambda_reg=1, gamma=2):
         super(HierarchicalFocalLoss, self).__init__()
-        self.bce = nn.BCEWithLogitsLoss(reduction='none')
+        self.bce = nn.BCEWithLogitsLoss()
         self.gamma = gamma
         self.hierarchy = hierarchy
         self.lambda_reg = lambda_reg
@@ -118,7 +125,8 @@ class HierarchicalFocalLoss(nn.Module):
 
         probs = torch.sigmoid(logits)
 
-        hier_loss = torch.zeros(logits.size(0), device=device)
+        hier_loss = torch.tensor(0.0, device=device)
+        # torch.zeros(logits.size(0), device=device)
         count = 0
 
         for child_idx, parent_idxs in self.parent_map.items():
@@ -127,14 +135,14 @@ class HierarchicalFocalLoss(nn.Module):
                 p_parent = probs[:, parent_idx]
 
                 violation = -target_child * torch.log(p_parent)
-                hier_loss += violation
+                hier_loss += violation.mean()
                 count += 1
 
         if count > 0:
             hier_loss = hier_loss / count
 
         total_loss = focal_loss + self.lambda_reg * hier_loss
-        return total_loss.mean(), hier_loss.mean()
+        return total_loss, hier_loss
 
     def extra_repr(self):
         return f"lambda_reg: {self.lambda_reg}\n gamma: {self.gamma}"

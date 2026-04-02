@@ -2,6 +2,7 @@ import argparse
 import torch
 import numpy as np
 import os
+import trackio
 
 from configs import config
 from data.preprocess import (
@@ -41,6 +42,11 @@ if __name__ == "__main__":
         taxonomy = config.WOS_TAXONOMY
         root = config.WOS_ROOT
         load = load_WOS
+    elif dataset == "toy":
+        data_path = config.TOY_PATH
+        taxonomy = config.TOY_TAXONOMY
+        root = config.TOY_ROOT
+        load = load_FORC
     logger = setup_logger(dataset)
 
     logger.info(f"Starting {logger.name} run")
@@ -83,18 +89,23 @@ if __name__ == "__main__":
         optimizer = torch.optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
         logger.info(f"Optimizer: {optimizer}")
         # criterion = HybridFocalLoss(hierarchy, config.LAMBDA, config.GAMMA)
-        # criterion = FocalLoss(config.GAMMA)
-        criterion = HierarchicalBCELoss(hierarchy, lambda_reg=config.LAMBDA)
-        # criterion = torch.nn.BCEWithLogitsLoss()
+        # criterion = HierarchicalFocalLoss(hierarchy, config.LAMBDA, config.GAMMA)
+        criterion = HierarchicalBCELoss(hierarchy, config.LAMBDA, config.WEIGHTED)
+        # if config.WEIGHTED:
+        #     weight = torch.ones(len(hierarchy), dtype=torch.float32).to(device)
+        # else:
+        #     weight = None
+        # criterion = torch.nn.BCEWithLogitsLoss(weight=weight)
         logger.info(f"Criterion: {criterion}")
 
         # evaluator = Evaluator(average=config.AVERAGES)
         evaluator = HierarchicalEvaluator(
-            hierarchy_root,
+            hierarchy,
             classes,
             levels,
             average=config.AVERAGES,
             filename=config.LOG_ANALYSIS,
+            npz=config.NPZ,
         )
         logger.info(f"Evaluator: {evaluator}")
         early_stopper = EarlyStopper(patience=config.PATIENCE)
@@ -109,6 +120,23 @@ if __name__ == "__main__":
             evaluator=evaluator,
             early_stopper=early_stopper,
             # checkpoint_dir=config.CHECKPOINT_PATH,
+        )
+        trackio.init(
+            project=logger.name,
+            group=f"fold{fold}",
+            config={
+                "dataset": dataset,
+                "epochs": config.EPOCHS,
+                "learning_rate": config.LEARNING_RATE,
+                "patience": config.PATIENCE,
+                "batch_size": config.BATCH_SIZE,
+                "model": model.__repr__(),
+                "optimizer": optimizer.__repr__(),
+                "criterion": criterion.__repr__(),
+                "weighted": config.WEIGHTED,
+                "evaluator": evaluator.__repr__(),
+            },
+            auto_log_gpu=True,
         )
 
         result = trainer.train(config.EPOCHS)
@@ -144,3 +172,5 @@ if __name__ == "__main__":
 
     plot_loss(averaged_losses, os.path.join(config.LOG_PATH, "avg_loss.png"), logger)
     plot_metrics(summary, os.path.join(config.LOG_PATH, "metrics.png"), logger)
+
+    trackio.finish()

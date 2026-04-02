@@ -1,5 +1,6 @@
 import os
 import torch
+import trackio
 from collections import defaultdict
 
 
@@ -164,16 +165,20 @@ class Trainer:
                         self.logger.info(f"Epoch {epoch}: Val Loss: {value:.4f}")
 
                 if self.evaluator is not None:
-                    results = self.evaluator(
+                    results, weights = self.evaluator(
                         model=self.model,
                         dataloader=self.val_loader,
+                        trainloader=self.train_loader,
                         device=self.device,
                     )
+                    if weights is not None and self.criterion.weight is not None:
+                        self.criterion.weight = weights.to(self.device)
 
                     self.logger.info(
                         f"Epoch {epoch}: "
                         + ", ".join(f"{k}={v:.4f}" for k, v in results.items())
                     )
+                    trackio.log({"epoch": epoch} | train_losses | val_losses | results)
 
                 if self.scheduler:
                     self.scheduler.step()
@@ -193,11 +198,12 @@ class Trainer:
 
         metrics = {}
         if self.evaluator is not None:
-            metrics = self.evaluator(
+            metrics, _ = self.evaluator(
                 model=self.model,
                 dataloader=self.val_loader,
                 device=self.device,
                 analyze=True,
+                save=True,
             )
         metrics.update(dict(losses))
 

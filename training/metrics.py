@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import pandas as pd
 import os
+import networkx as nx
 from datetime import datetime
 from sklearn.metrics import precision_recall_fscore_support, multilabel_confusion_matrix
 
@@ -55,6 +56,12 @@ def hierarchical_evaluation(target, predict, hierarchy, averages=None):  # TODO:
 
 def ahc_evaluation(target, predict, hierarchy):
     ahc = []
+    root_id = len(hierarchy)
+    roots = [n for n, d in hierarchy.in_degree() if d == 0]
+    hierarchy.add_node(root_id)
+
+    for r in roots:
+        hierarchy.add_edge(root_id, r)
     graph = hierarchy.to_undirected()
     paths = get_all_shortest_paths(graph)
 
@@ -81,7 +88,9 @@ def ahc_evaluation(target, predict, hierarchy):
             ahc.append(np.mean(distances))
         else:
             ahc.append(np.nan)
-    return {"ahc": np.nanmean(ahc)}
+    hierarchy.remove_node(root_id)
+    mean_ahc = np.nanmean(ahc)
+    return {"ahc": mean_ahc.item() if not np.isnan(mean_ahc) else 0.0}
 
 
 def analysis(target, predict, classes, log_analysis, levels=None):
@@ -158,6 +167,91 @@ def analysis(target, predict, classes, log_analysis, levels=None):
         lvl.to_excel(
             writer, sheet_name=f"Level_{datetime.now().timestamp()}", index=False
         )
+
+
+def conditional_probability(target, predict, hierarchy, alpha=1e-5):
+    assert predict.shape == target.shape
+    states = [(0, 0), (0, 1), (1, 0), (1, 1)]
+    # sorted_levels = sorted(levels.keys(), reverse=True)
+
+    state_s = {}
+    error_a = target != predict
+    for node in hierarchy.nodes:
+        state_s[node] = {}
+        for s in states:
+            state_s[node][s] = (target[:, node] == s[0]) & (predict[:, node] == s[1])
+    cond_prob = {}
+    for node in hierarchy.nodes:
+        ancestors = nx.ancestors(hierarchy, node)
+        if not ancestors:
+            continue
+        for s in states:
+            denominator = state_s[node][s].sum().item() + 2*alpha
+            # if denominator == 0:
+            #     for a in ancestors:
+            #         cond_prob[(a, node, s)] = 0.0
+            #     continue
+            for a in ancestors:
+                intersection = error_a[:, a] & state_s[node][s]
+                numerator = intersection.sum().item() + alpha
+
+                cond_prob[(a, node, s)] = numerator / denominator
+
+    # for lvl in sorted_levels:
+    #     for node in levels[lvl]:
+    #         ancestors = nx.ancestors(hierarchy, node)
+    #         for a in ancestors:
+    #             for s in states:
+    #                 state_node = (target[:, node] == s[0]) & (predict[:, node] ==s[1])
+    #                 denominator = state_node.sum().item()
+
+    #                 if denominator == 0:
+    #                     probs[(a, node, s)] = 0.0
+    #                     continue
+    #                 errors_a = (target[:, a] != predict[:, a])
+    #                 intersection = errors_a & state_node
+    #                 numerator = intersection.sum().item()
+
+    #                 probs[(a, node, s)] = numerator / denominator
+    return cond_prob
+
+
+def error_propagation(target, predict, hierarchy, cond_prob, alpha=1e-5):
+    assert predict.shape == target.shape
+
+    states = [(0, 0), (0, 1), (1, 0), (1, 1)]
+    P_S = {}
+    for node in hierarchy.nodes:
+        P_S[node] = {}
+        for s in states:
+            match = (target[:, node] == s[0]) & (predict[:, node] == s[1])
+            P_S[node][s] = (match.sum().item() + alpha) / (predict.shape[0] + 4*alpha)
+
+    P_E = {}
+    for node in hierarchy.nodes:
+        children = list(nx.descendants(hierarchy, node))
+
+        if not children:
+            P_E[node] = P_S[node][(1, 0)] + P_S[node][(0, 1)]
+            continue
+
+        sum_node = 0.0
+
+        for child in children:
+            # sum_s = 0.0
+
+            # for s in states:
+            #     p_cond = P_E_S.get((node, child, s), 0.0)
+            #     p_marg = P_S[child][s]
+
+            #     sum_s += (p_cond * p_marg)
+
+            sum_node += sum(
+                cond_prob.get((node, child, s), 0.0) * P_S[child][s] for s in states
+            )
+
+        P_E[node] = sum_node / len(children)
+    return torch.tensor([P_E[k] for k in sorted(P_E)])
 
 
 def multilabel_cms(target, predict, classes):
