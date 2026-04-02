@@ -196,23 +196,6 @@ def conditional_probability(target, predict, hierarchy, alpha=1e-5):
                 numerator = intersection.sum().item() + alpha
 
                 cond_prob[(a, node, s)] = numerator / denominator
-
-    # for lvl in sorted_levels:
-    #     for node in levels[lvl]:
-    #         ancestors = nx.ancestors(hierarchy, node)
-    #         for a in ancestors:
-    #             for s in states:
-    #                 state_node = (target[:, node] == s[0]) & (predict[:, node] ==s[1])
-    #                 denominator = state_node.sum().item()
-
-    #                 if denominator == 0:
-    #                     probs[(a, node, s)] = 0.0
-    #                     continue
-    #                 errors_a = (target[:, a] != predict[:, a])
-    #                 intersection = errors_a & state_node
-    #                 numerator = intersection.sum().item()
-
-    #                 probs[(a, node, s)] = numerator / denominator
     return cond_prob
 
 
@@ -238,13 +221,6 @@ def error_propagation(target, predict, hierarchy, cond_prob, alpha=1e-5):
         sum_node = 0.0
 
         for child in children:
-            # sum_s = 0.0
-
-            # for s in states:
-            #     p_cond = P_E_S.get((node, child, s), 0.0)
-            #     p_marg = P_S[child][s]
-
-            #     sum_s += (p_cond * p_marg)
 
             sum_node += sum(
                 cond_prob.get((node, child, s), 0.0) * P_S[child][s] for s in states
