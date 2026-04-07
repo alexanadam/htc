@@ -5,15 +5,12 @@ from data.preprocess import get_parents_list, get_predecessor_map
 
 
 class HierarchicalBCELoss(nn.Module):
-    def __init__(self, hierarchy, lambda_reg=1, weighted=False):
+    def __init__(self, hierarchy, lambda_reg=1, weight=None):
         super().__init__()
         self.bce = nn.BCEWithLogitsLoss()
         self.lambda_reg = lambda_reg
         self.parent_map = get_parents_list(hierarchy)
-        if weighted:
-            self.weight = torch.ones(len(hierarchy), dtype=torch.float32)
-        else:
-            self.weight = None
+        self.weight = weight
 
     def forward(self, logits, targets):
         device = logits.device

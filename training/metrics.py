@@ -3,10 +3,11 @@ import numpy as np
 import pandas as pd
 import os
 import networkx as nx
+import matplotlib.pyplot as plt
 from datetime import datetime
 from sklearn.metrics import precision_recall_fscore_support, multilabel_confusion_matrix
 
-from data.preprocess import get_parents, get_all_shortest_paths
+from data.preprocess import get_parents, get_all_shortest_paths, get_predecessor_map
 
 
 def accuracy(outputs, labels):
@@ -253,3 +254,91 @@ def level_average_cm(cms, levels):
             matrices = [label_matrices[label] for label in labels]
             averages[key][f"level{i}"] = np.mean(matrices, axis=0)
     return averages
+
+
+def node_importance(labels, hierarchy):
+    size = labels.shape[1]
+    predict = []
+    parents_map = get_predecessor_map(hierarchy)
+    parents_array = np.zeros((size, size), dtype=int)
+    for child, parents in parents_map.items():
+        parents_array[child, parents] = 1
+
+    for target in labels.astype(int):
+        altered = target ^ np.eye(size, dtype=int)
+
+        indices = np.where((target == 0))[0]
+        if indices.size > 0:
+            altered[indices] |= parents_array[indices]
+
+        predict.extend(altered)
+
+    predict = np.stack(predict, axis=0)
+    target = np.repeat(labels, repeats=size, axis=0)
+
+    cond_prob = conditional_probability(target, predict, hierarchy)
+    error = error_propagation(target, predict, hierarchy, cond_prob)
+
+    return error
+
+
+def plot_loss(losses, path, logger):
+    plt.figure(figsize=(14, 8))
+
+    for metric_name, loss_values in losses.items():
+        epochs = range(1, len(loss_values) + 1)
+
+        clean_label = metric_name.replace("_", " ").title()
+
+        is_val = "val" in metric_name
+        line_style = "--" if is_val else "-"
+        marker_style = "s" if is_val else "o"
+
+        plt.plot(
+            epochs,
+            loss_values,
+            label=clean_label,
+            linestyle=line_style,
+            marker=marker_style,
+            markersize=4
+        )
+
+    plt.title("Loss History")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(path, dpi=600, bbox_inches="tight")
+    plt.close()
+    logger.info(f"Plot saved successfully to {path}")
+
+
+def plot_metrics(metrics, path, logger):
+    means = [metric['mean'] for metric in metrics.values()]
+    stds = [metric['std'] for metric in metrics.values()]
+
+    plt.figure(figsize=(10, 6))
+    x_positions = np.arange(len(metrics))
+
+    plt.bar(
+        x_positions,
+        means,
+        yerr=stds,
+        capsize=8,
+        color='steelblue',
+        edgecolor='black',
+        alpha=0.8
+    )
+
+    plt.title('Cross-Validation Summary: Final Metrics', fontsize=14)
+    plt.ylabel('Score')
+
+    plt.xticks(x_positions, metrics.keys(), rotation=30, ha='right')
+    plt.yticks(np.arange(0, 1.1, 0.1))
+
+    plt.grid(axis='y', linestyle=':', alpha=0.7)
+    plt.tight_layout()
+
+    plt.savefig(path, dpi=300, bbox_inches='tight')
+    logger.info(f"Combined scalar metrics plot saved successfully to {path}")
+    plt.close()

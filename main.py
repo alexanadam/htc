@@ -17,13 +17,13 @@ from data.embedding import EmbeddingModel
 from models.MLP import MLPModule
 from utils.logger import setup_logger
 from utils.device import get_best_device
-from utils.helper import plot_loss, plot_metrics
 from utils.callbacks import EarlyStopper
 from data.dataloader import get_dataloader
 from data.splits import kfold_splits
 from training.evaluator import HierarchicalEvaluator
 from training.trainer import Trainer
 from training.losses import HierarchicalBCELoss
+from training.metrics import plot_loss, plot_metrics, node_importance
 
 if __name__ == "__main__":
     init_seed(config.SEED)
@@ -63,6 +63,10 @@ if __name__ == "__main__":
     emb_model = EmbeddingModel(config.EMB_MODEL, logger, device=device)
     embeddings = emb_model.compute_embeddings(data, config.EMB_BATCH, config.EMB_SIZE)
     splits = kfold_splits(embeddings, labels)
+    if config.WEIGHTED:
+        weight = node_importance(labels, hierarchy)
+    else:
+        weight = None
 
     results = []
 
@@ -90,11 +94,7 @@ if __name__ == "__main__":
         logger.info(f"Optimizer: {optimizer}")
         # criterion = HybridFocalLoss(hierarchy, config.LAMBDA, config.GAMMA)
         # criterion = HierarchicalFocalLoss(hierarchy, config.LAMBDA, config.GAMMA)
-        criterion = HierarchicalBCELoss(hierarchy, config.LAMBDA, config.WEIGHTED)
-        # if config.WEIGHTED:
-        #     weight = torch.ones(len(hierarchy), dtype=torch.float32).to(device)
-        # else:
-        #     weight = None
+        criterion = HierarchicalBCELoss(hierarchy, config.LAMBDA, weight)
         # criterion = torch.nn.BCEWithLogitsLoss(weight=weight)
         logger.info(f"Criterion: {criterion}")
 

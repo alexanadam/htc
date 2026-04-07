@@ -165,14 +165,13 @@ class Trainer:
                         self.logger.info(f"Epoch {epoch}: Val Loss: {value:.4f}")
 
                 if self.evaluator is not None:
-                    results, weights = self.evaluator(
+                    results = self.evaluator(
                         model=self.model,
                         dataloader=self.val_loader,
-                        trainloader=self.train_loader,
                         device=self.device,
                     )
-                    if weights is not None and self.criterion.weight is not None:
-                        self.criterion.weight = weights.to(self.device)
+                    # if weights is not None and self.criterion.weight is not None:
+                    #     self.criterion.weight = weights.to(self.device)
 
                     self.logger.info(
                         f"Epoch {epoch}: "
@@ -198,7 +197,7 @@ class Trainer:
 
         metrics = {}
         if self.evaluator is not None:
-            metrics, _ = self.evaluator(
+            metrics = self.evaluator(
                 model=self.model,
                 dataloader=self.val_loader,
                 device=self.device,
