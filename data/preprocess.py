@@ -7,6 +7,7 @@ import json
 import networkx as nx
 import random
 import torch
+import matplotlib.pyplot as plt
 from collections import defaultdict
 
 from sklearn.preprocessing import MultiLabelBinarizer
@@ -242,3 +243,50 @@ def get_levels(hierarchy):
         level = nx.shortest_path_length(hierarchy, root, node)
         grouped[level].append(node)
     return grouped
+
+
+def plot_importance(weight, hierarchy, classes, path):
+    filtered_nodes = [node for node in hierarchy.nodes() if weight[node] > 0.0056]
+    filtered_weights = [w for w in weight if w > 0.0056]
+
+    subgraph = hierarchy.subgraph(filtered_nodes)
+
+    pos = nx.drawing.layout.bfs_layout(subgraph, start=181, align="vertical")
+
+    pos = {node: (coords[0] * 3, coords[1]) for node, coords in pos.items()}
+
+    # pos = nx.drawing.layout.bfs_layout(hierarchy, start=181, align="vertical")
+    # for node in pos:
+    #     pos[node][0] *= 10
+
+    # levels = nx.single_source_shortest_path_length(hierarchy, 181)
+
+    # for node, level in levels.items():
+    #     hierarchy.nodes[node]['layer'] = level
+
+    # pos = nx.multipartite_layout(hierarchy, subset_key="layer", align="vertical")
+
+    # pos = {node: (coords[0], coords[1]) for node, coords in pos.items()}
+
+    plt.figure(figsize=(12, 8))
+    nx.draw_networkx_edges(subgraph, pos, alpha=0.2, edge_color="gray")
+    nodes = nx.draw_networkx_nodes(
+        subgraph,
+        pos,
+        node_color=filtered_weights,
+        cmap=plt.cm.YlOrRd,
+        node_size=300,
+        edgecolors="black",
+        linewidths=0.5,
+    )
+    nx.draw_networkx_labels(
+        subgraph,
+        pos,
+        labels={node: classes[node] for node in filtered_nodes if node != 181},
+        font_size=8,
+    )
+    plt.colorbar(nodes, label="Weight Intensity")
+    plt.title("Hierarchical Graph Heatmap")
+    plt.axis("off")
+    plt.savefig(path, dpi=600, bbox_inches="tight")
+    plt.close()

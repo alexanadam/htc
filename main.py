@@ -12,6 +12,7 @@ from data.preprocess import (
     get_hierarchy,
     get_levels,
     init_seed,
+    plot_importance,
 )
 from data.embedding import EmbeddingModel
 from models.MLP import MLPModule
@@ -26,6 +27,7 @@ from training.losses import HierarchicalBCELoss
 from training.metrics import plot_loss, plot_metrics, node_importance
 
 if __name__ == "__main__":
+    # trackio.show()
     init_seed(config.SEED)
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="forc", help="dataset name to use")
@@ -64,9 +66,16 @@ if __name__ == "__main__":
     embeddings = emb_model.compute_embeddings(data, config.EMB_BATCH, config.EMB_SIZE)
     splits = kfold_splits(embeddings, labels)
     if config.WEIGHTED:
-        weight = node_importance(labels, hierarchy)
+        weight = node_importance(labels, hierarchy).to(device)
     else:
         weight = None
+
+    plot_importance(
+        torch.cat((weight.cpu(), torch.tensor([0.01])), dim=0),
+        hierarchy_root,
+        classes,
+        os.path.join(config.LOG_PATH, "importance.png"),
+    )
 
     results = []
 
