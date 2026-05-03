@@ -246,10 +246,11 @@ def get_levels(hierarchy):
 
 
 def plot_importance(weight, hierarchy, classes, path):
-    filtered_nodes = [node for node in hierarchy.nodes() if weight[node] > 0.0056]
-    filtered_weights = [w for w in weight if w > 0.0056]
+    filtered = {node: weight[node] for node in hierarchy.nodes() if weight[node] > 0.0056}
+    filtered_nodes = filtered.keys()
 
     subgraph = hierarchy.subgraph(filtered_nodes)
+    filtered_weights = [filtered[node] for node in subgraph.nodes()]
 
     pos = nx.drawing.layout.bfs_layout(subgraph, start=181, align="vertical")
 
