@@ -12,7 +12,6 @@ from data.preprocess import (
     get_hierarchy,
     get_levels,
     init_seed,
-    plot_importance,
 )
 from data.embedding import EmbeddingModel
 from models.MLP import MLPModule
@@ -24,7 +23,7 @@ from data.splits import kfold_splits
 from training.evaluator import HierarchicalEvaluator
 from training.trainer import Trainer
 from training.losses import HierarchicalBCELoss
-from training.metrics import plot_loss, plot_metrics, node_importance
+from training.metrics import plot_loss, plot_metrics, node_importance, plot_importance
 
 if __name__ == "__main__":
     # trackio.show()

@@ -187,7 +187,7 @@ def conditional_probability(target, predict, hierarchy, alpha=1e-5):
         if not ancestors:
             continue
         for s in states:
-            denominator = state_s[node][s].sum().item() + 2*alpha
+            denominator = state_s[node][s].sum().item() + 2 * alpha
             # if denominator == 0:
             #     for a in ancestors:
             #         cond_prob[(a, node, s)] = 0.0
@@ -209,7 +209,7 @@ def error_propagation(target, predict, hierarchy, cond_prob, alpha=1e-5):
         P_S[node] = {}
         for s in states:
             match = (target[:, node] == s[0]) & (predict[:, node] == s[1])
-            P_S[node][s] = (match.sum().item() + alpha) / (predict.shape[0] + 4*alpha)
+            P_S[node][s] = (match.sum().item() + alpha) / (predict.shape[0] + 4 * alpha)
 
     P_E = {}
     for node in hierarchy.nodes:
@@ -229,6 +229,58 @@ def error_propagation(target, predict, hierarchy, cond_prob, alpha=1e-5):
 
         P_E[node] = sum_node / len(children)
     return torch.tensor([P_E[k] for k in sorted(P_E)])
+
+
+def error_probability(target, predict, hierarchy, alpha=1e-5):
+    assert predict.shape == target.shape
+    states = [(0, 0), (0, 1), (1, 0), (1, 1)]
+    N = predict.shape[0]
+
+    error_a = target != predict
+    P_E = {}
+    for node in hierarchy.nodes:
+        children = list(nx.descendants(hierarchy, node))
+
+        if not children:
+            P_E[node] = (error_a[:, node].sum().item() + 2 * alpha) / (N + 4 * alpha)
+            continue
+
+        sum_node = 0.0
+        for child in children:
+            prob_child = 0.0
+            for s in states:
+                state_s = (target[:, child] == s[0]) & (predict[:, child] == s[1])
+
+                intersection = error_a[:, node] & state_s
+
+                joint_prob = (intersection.sum().item() + alpha) / (N + 4 * alpha)
+                prob_child += joint_prob
+
+            sum_node += prob_child
+
+        P_E[node] = sum_node / len(children)
+
+    return torch.tensor([P_E[k] for k in sorted(P_E)])
+
+
+def error_probability_optimized(target, predict, hierarchy, alpha=0):
+    assert predict.shape == target.shape
+    N = predict.shape[0]
+
+    error_a = target != predict
+
+    P_E = {}
+    for node in hierarchy.nodes:
+        children = list(nx.descendants(hierarchy, node))
+
+        if not children:
+            P_E[node] = (error_a[:, node].sum().item() + 2 * alpha) / (N + 4 * alpha)
+        else:
+            P_E[node] = (error_a[:, node].sum().item() + 4 * alpha) / (N + 4 * alpha)
+
+    error = torch.tensor([P_E[k] for k in sorted(P_E)])
+
+    return error
 
 
 def multilabel_cms(target, predict, classes):
@@ -270,14 +322,25 @@ def node_importance(labels, hierarchy):
         indices = np.where((target == 0))[0]
         if indices.size > 0:
             altered[indices] |= parents_array[indices]
+        # altered = target ^ np.random.binomial(1, 0.05, size=(size, size))
+
+        # flipped_mask = (target == 0) & (altered == 1)
+
+        # combined_parents = (flipped_mask @ parents_array) > 0
+
+        # altered |= combined_parents
 
         predict.extend(altered)
 
     predict = np.stack(predict, axis=0)
     target = np.repeat(labels, repeats=size, axis=0)
 
-    cond_prob = conditional_probability(target, predict, hierarchy)
-    error = error_propagation(target, predict, hierarchy, cond_prob)
+    # cond_prob = conditional_probability(target, predict, hierarchy)
+    # error = error_propagation(target, predict, hierarchy, cond_prob)
+
+    # error = error_probability(target, predict, hierarchy)
+
+    error = error_probability_optimized(target, predict, hierarchy, 0)
 
     return error
 
@@ -300,7 +363,7 @@ def plot_loss(losses, path, logger):
             label=clean_label,
             linestyle=line_style,
             marker=marker_style,
-            markersize=4
+            markersize=4,
         )
 
     plt.title("Loss History")
@@ -314,8 +377,8 @@ def plot_loss(losses, path, logger):
 
 
 def plot_metrics(metrics, path, logger):
-    means = [metric['mean'] for metric in metrics.values()]
-    stds = [metric['std'] for metric in metrics.values()]
+    means = [metric["mean"] for metric in metrics.values()]
+    stds = [metric["std"] for metric in metrics.values()]
 
     plt.figure(figsize=(10, 6))
     x_positions = np.arange(len(metrics))
@@ -325,20 +388,70 @@ def plot_metrics(metrics, path, logger):
         means,
         yerr=stds,
         capsize=8,
-        color='steelblue',
-        edgecolor='black',
-        alpha=0.8
+        color="steelblue",
+        edgecolor="black",
+        alpha=0.8,
     )
 
-    plt.title('Cross-Validation Summary: Final Metrics', fontsize=14)
-    plt.ylabel('Score')
+    plt.title("Cross-Validation Summary: Final Metrics", fontsize=14)
+    plt.ylabel("Score")
 
-    plt.xticks(x_positions, metrics.keys(), rotation=30, ha='right')
+    plt.xticks(x_positions, metrics.keys(), rotation=30, ha="right")
     plt.yticks(np.arange(0, 1.1, 0.1))
 
-    plt.grid(axis='y', linestyle=':', alpha=0.7)
+    plt.grid(axis="y", linestyle=":", alpha=0.7)
     plt.tight_layout()
 
-    plt.savefig(path, dpi=300, bbox_inches='tight')
+    plt.savefig(path, dpi=300, bbox_inches="tight")
     logger.info(f"Combined scalar metrics plot saved successfully to {path}")
+    plt.close()
+
+
+def plot_importance(weight, hierarchy, classes, path, threshold=0.0056):
+    filtered = {
+        node: weight[node] for node in hierarchy.nodes() if weight[node] > threshold
+    }
+    filtered_nodes = filtered.keys()
+
+    subgraph = hierarchy.subgraph(filtered_nodes)
+    filtered_weights = [filtered[node] for node in subgraph.nodes()]
+
+    pos = nx.drawing.layout.bfs_layout(subgraph, start=181, align="vertical")
+
+    pos = {node: (coords[0] * 3, coords[1]) for node, coords in pos.items()}
+
+    # pos = nx.drawing.layout.bfs_layout(hierarchy, start=181, align="vertical")
+    # for node in pos:
+    #     pos[node][0] *= 10
+
+    # levels = nx.single_source_shortest_path_length(hierarchy, 181)
+
+    # for node, level in levels.items():
+    #     hierarchy.nodes[node]['layer'] = level
+
+    # pos = nx.multipartite_layout(hierarchy, subset_key="layer", align="vertical")
+
+    # pos = {node: (coords[0], coords[1]) for node, coords in pos.items()}
+
+    plt.figure(figsize=(12, 8))
+    nx.draw_networkx_edges(subgraph, pos, alpha=0.2, edge_color="gray")
+    nodes = nx.draw_networkx_nodes(
+        subgraph,
+        pos,
+        node_color=filtered_weights,
+        cmap=plt.cm.YlOrRd,
+        node_size=300,
+        edgecolors="black",
+        linewidths=0.5,
+    )
+    nx.draw_networkx_labels(
+        subgraph,
+        pos,
+        labels={node: classes[node] for node in filtered_nodes if node != 181},
+        font_size=8,
+    )
+    plt.colorbar(nodes, label="Weight Intensity")
+    plt.title("Hierarchical Graph Heatmap")
+    plt.axis("off")
+    plt.savefig(path, dpi=600, bbox_inches="tight")
     plt.close()
