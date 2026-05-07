@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 from sklearn.metrics import precision_recall_fscore_support, multilabel_confusion_matrix
 
-from data.preprocess import get_parents, get_all_shortest_paths, get_predecessor_map
+from data.preprocess import get_parents, get_all_shortest_paths, get_parents_list
 
 
 def accuracy(outputs, labels):
@@ -283,6 +283,12 @@ def error_probability_optimized(target, predict, hierarchy, alpha=0):
     return error
 
 
+def serial_bitflip_error(target, predict):
+    assert predict.shape == target.shape
+    errors = np.sum(predict != target, axis=1).reshape(-1, predict.shape[1])
+    return torch.tensor(np.mean(errors, axis=0))
+
+
 def multilabel_cms(target, predict, classes):
     metrics = {}
 
@@ -311,10 +317,10 @@ def level_average_cm(cms, levels):
 def node_importance(labels, hierarchy):
     size = labels.shape[1]
     predict = []
-    parents_map = get_predecessor_map(hierarchy)
+    parents_map = get_parents_list(hierarchy)
     parents_array = np.zeros((size, size), dtype=int)
     for child, parents in parents_map.items():
-        parents_array[child, parents] = 1
+        parents_array[child, list(parents)] = 1
 
     for target in labels.astype(int):
         altered = target ^ np.eye(size, dtype=int)
@@ -340,7 +346,9 @@ def node_importance(labels, hierarchy):
 
     # error = error_probability(target, predict, hierarchy)
 
-    error = error_probability_optimized(target, predict, hierarchy, 0)
+    # error = error_probability_optimized(target, predict, hierarchy, 0)
+
+    error = serial_bitflip_error(target, predict)
 
     return error
 
