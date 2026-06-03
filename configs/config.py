@@ -19,6 +19,8 @@ LOG_ANALYSIS = os.path.join(LOG_PATH, "analysis.xlsx")
 LOG_LOSS = os.path.join(LOG_PATH, "loss.png")
 NPZ = os.path.join(LOG_PATH, "results.npz")
 
+FINETUNE = True
+
 EMB_MODEL = "bert-base-uncased"
 EMB_BATCH = 1024
 EMB_SIZE = 512
@@ -37,4 +39,7 @@ LEARNING_RATE = 1e-3
 LAMBDA = 1
 GAMMA = 2
 PATIENCE = 5
-WEIGHTED = True
+WEIGHTED = False
+NORM = True
+
+TRACK = False

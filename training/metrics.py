@@ -7,7 +7,12 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 from sklearn.metrics import precision_recall_fscore_support, multilabel_confusion_matrix
 
-from data.preprocess import get_parents, get_all_shortest_paths, get_parents_list
+from data.preprocess import (
+    get_parents,
+    get_all_shortest_paths,
+    get_parents_list,
+    get_predecessor_map,
+)
 
 
 def accuracy(outputs, labels):
@@ -170,6 +175,38 @@ def analysis(target, predict, classes, log_analysis, levels=None):
         )
 
 
+def violations(target, predict, hierarchy):
+    assert predict.shape == target.shape
+    # count = 0
+    # ancestor_map = get_predecessor_map(hierarchy)
+    # for i, sample in enumerate(target):
+    #     for j, label in enumerate(sample):
+    #         if label == 1 and predict[i][j] == 1:
+    #             if ancestor_map[j]:
+    #                 if predict[i][ancestor_map[j][0]] == 0:
+    #                     count += 1
+    ancestor_map = get_predecessor_map(hierarchy)
+    ancestor_list = [
+        ancestor_map[key][0] if ancestor_map[key] else False
+        for key in sorted(ancestor_map)
+    ]
+    true_positives = (target == 1) & (predict == 1)
+    parent_predicted_zero = predict[:, ancestor_list] == 0
+    has_ancestor = np.array(
+        [False if (x is False) else True for x in ancestor_list], dtype=bool
+    )
+    violations = true_positives & parent_predicted_zero & has_ancestor
+    count = np.sum(violations)
+
+    # indices = np.where(np.any(violations, axis=1))[0]
+    return {
+        "violations": count / predict.size,
+        "count": count,
+        "size": predict.size,
+        # "indices": indices,
+    }
+
+
 def conditional_probability(target, predict, hierarchy, alpha=1e-5):
     assert predict.shape == target.shape
     states = [(0, 0), (0, 1), (1, 0), (1, 1)]
@@ -283,10 +320,14 @@ def error_probability_optimized(target, predict, hierarchy, alpha=0):
     return error
 
 
-def serial_bitflip_error(target, predict):
+def serial_bitflip_error(target, predict, norm=False):
     assert predict.shape == target.shape
     errors = np.sum(predict != target, axis=1).reshape(-1, predict.shape[1])
-    return torch.tensor(np.mean(errors, axis=0))
+    average_errors = torch.tensor(np.mean(errors, axis=0))
+    if norm:
+        prob = np.sum(predict, axis=0) / np.sum(predict)
+        return average_errors * prob
+    return average_errors
 
 
 def multilabel_cms(target, predict, classes):
@@ -314,7 +355,7 @@ def level_average_cm(cms, levels):
     return averages
 
 
-def node_importance(labels, hierarchy):
+def node_importance(labels, hierarchy, norm=False):
     size = labels.shape[1]
     predict = []
     parents_map = get_parents_list(hierarchy)
@@ -348,7 +389,7 @@ def node_importance(labels, hierarchy):
 
     # error = error_probability_optimized(target, predict, hierarchy, 0)
 
-    error = serial_bitflip_error(target, predict)
+    error = serial_bitflip_error(target, predict, norm)
 
     return error
 
@@ -424,7 +465,9 @@ def plot_importance(weight, hierarchy, classes, path, threshold=0.0056):
     subgraph = hierarchy.subgraph(filtered_nodes)
     filtered_weights = [filtered[node] for node in subgraph.nodes()]
 
-    pos = nx.drawing.layout.bfs_layout(subgraph, start=181, align="vertical")
+    pos = nx.drawing.layout.bfs_layout(
+        subgraph, start=len(weight) - 1, align="vertical"
+    )
 
     pos = {node: (coords[0] * 3, coords[1]) for node, coords in pos.items()}
 
@@ -455,7 +498,9 @@ def plot_importance(weight, hierarchy, classes, path, threshold=0.0056):
     nx.draw_networkx_labels(
         subgraph,
         pos,
-        labels={node: classes[node] for node in filtered_nodes if node != 181},
+        labels={
+            node: classes[node] for node in filtered_nodes if node != len(weight) - 1
+        },
         font_size=8,
     )
     plt.colorbar(nodes, label="Weight Intensity")

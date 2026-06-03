@@ -55,14 +55,24 @@ def create_WOS_hierarchy(path, output):
     return root
 
 
+def load_saved(path, classes):
+    loaded = torch.load(os.path.join(path, "sliced.pt"), weights_only=False)
+    return loaded["data"], loaded["labels"]
+
+
 def load_WOS(path, classes):
 
     data = pd.read_excel(os.path.join(path, "Data.xlsx"))
 
+    # data = data[data["area"] != "Bamboo as a Building Material"]
+    # data = data.drop(data[data["area"] == "Bamboo as a Building Material"].index)
+
     data["Domain"] = data["Domain"].apply(lambda x: [x.strip()])
     data["area"] = data["area"].str.strip()
+    data = data[data["area"] != "Bamboo as a Building Material"]
 
-    maps = data.groupby("Y")["area"].agg(lambda x: list(set(x)))
+    # maps = data.groupby("Y")["area"].agg(lambda x: list(set(x)))
+    maps = data.groupby("Y")["area"].agg(lambda x: [" - ".join(set(x.astype(str)))])
     data["level2"] = data["Y"].map(maps)
 
     data["labels"] = data["Domain"] + data["level2"]
@@ -111,6 +121,7 @@ def load_FORC(path, classes, with_weak=True):
     data["Level2"] = data["Level2"].apply(python_parser)
     data["Level3"] = data["Level3"].apply(python_parser)
     data["labels"] = data["Level1"] + data["Level2"] + data["Level3"]
+    # data["labels"] = data["Level1"]
 
     data["title"] = data["title"].apply(clean_data)
     data["abstract"] = data["abstract"].astype(str).fillna("").apply(clean_data)

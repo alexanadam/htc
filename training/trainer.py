@@ -79,12 +79,21 @@ class Trainer:
         aux_loss = 0.0
 
         for batch_id, batch in enumerate(self.train_loader, start=1):
-            inputs, targets = batch
-            inputs = inputs.to(self.device)
-            targets = targets.to(self.device)
+            if isinstance(batch, dict):
+                targets = batch.pop("labels").to(self.device)
+                inputs = {k: v.to(self.device) for k, v in batch.items()}
+            else:
+                inputs, targets = batch
+                inputs = inputs.to(self.device)
+                targets = targets.to(self.device)
 
             self.optimizer.zero_grad()
-            outputs = self.model(inputs)
+
+            if isinstance(inputs, dict):
+                outputs = self.model(**inputs)
+            else:
+                outputs = self.model(inputs)
+
             losses = self.criterion(outputs, targets)
             try:
                 loss, extras = losses
@@ -123,11 +132,18 @@ class Trainer:
 
         with torch.no_grad():
             for batch in self.val_loader:
-                inputs, targets = batch
-                inputs = inputs.to(self.device)
-                targets = targets.to(self.device)
+                if isinstance(batch, dict):
+                    targets = batch.pop("labels").to(self.device)
+                    inputs = {k: v.to(self.device) for k, v in batch.items()}
+                else:
+                    inputs, targets = batch
+                    inputs = inputs.to(self.device)
+                    targets = targets.to(self.device)
 
-                outputs = self.model(inputs)
+                if isinstance(inputs, dict):
+                    outputs = self.model(**inputs)
+                else:
+                    outputs = self.model(inputs)
                 losses = self.criterion(outputs, targets)
                 try:
                     loss, extras = losses
@@ -146,7 +162,7 @@ class Trainer:
             self.logger.info(f"Val aux loss: {metrics['val_aux']:.4f}")
         return metrics
 
-    def train(self, epochs):
+    def train(self, epochs, track):
         # best_val_loss = float("inf")
         self.logger.info(f"Training for {self.train_loader.batch_size} batches")
         losses = defaultdict(list)
@@ -177,7 +193,10 @@ class Trainer:
                         f"Epoch {epoch}: "
                         + ", ".join(f"{k}={v:.4f}" for k, v in results.items())
                     )
-                    trackio.log({"epoch": epoch} | train_losses | val_losses | results)
+                    if track:
+                        trackio.log(
+                            {"epoch": epoch} | train_losses | val_losses | results
+                        )
 
                 if self.scheduler:
                     self.scheduler.step()

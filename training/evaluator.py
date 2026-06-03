@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from training.metrics import ahc_evaluation, standard_evaluation, analysis
+from training.metrics import ahc_evaluation, standard_evaluation, analysis, violations
 
 
 class Evaluator:
@@ -15,10 +15,19 @@ class Evaluator:
         all_targets = []
 
         with torch.no_grad():
-            for inputs, targets in dataloader:
-                inputs = inputs.to(device)
+            for batch in dataloader:
+                if isinstance(batch, dict):
+                    targets = batch.pop("labels").to(device)
+                    inputs = {k: v.to(device) for k, v in batch.items()}
+                else:
+                    inputs, targets = batch
+                    inputs = inputs.to(device)
+                    targets = targets.to(device)
 
-                logits = model(inputs)
+                if isinstance(inputs, dict):
+                    logits = model(**inputs)
+                else:
+                    logits = model(inputs)
 
                 probs = torch.sigmoid(logits)
 
@@ -69,6 +78,20 @@ class HierarchicalEvaluator(Evaluator):
         metrics.update(ahc_evaluation(y_true, y_pred, self.hierarchy))
         if analyze and self.file is not None:
             analysis(y_true, y_pred, self.classes, self.file, self.levels)
+            metrics.update(violations(y_true, y_pred, self.hierarchy))
+            tr = np.sum(y_true, axis=1)
+            pr = np.sum(y_pred, axis=1)
+            predictions = {
+                "tr_mean": np.mean(tr).item(),
+                "tr_median": np.median(tr).item(),
+                "tr_min": np.min(tr).item(),
+                "tr_max": np.max(tr).item(),
+                "pr_mean": np.mean(pr).item(),
+                "pr_median": np.median(pr).item(),
+                "pr_min": np.min(pr).item(),
+                "pr_max": np.max(pr).item(),
+            }
+            metrics.update(predictions)
         # if trainloader is not None:
         #     train_true, train_pred = self._get_predictions(model, trainloader, device)
         #     prob = conditional_probability(train_true, train_pred, self.hierarchy)
