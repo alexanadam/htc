@@ -1,15 +1,10 @@
-import configs.config as config
-
 from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
 
 
-def kfold_splits(data, labels, folds=None):
-
-    if folds is None:
-        folds = config.CV_FOLDS
+def kfold_splits(data, labels, seed, folds=10):
 
     mskf = MultilabelStratifiedKFold(
-        n_splits=folds, shuffle=True, random_state=config.SEED
+        n_splits=folds, shuffle=True, random_state=seed
     )
 
     return mskf.split(data, labels)

@@ -1,7 +1,7 @@
 import torch
 import pandas as pd
 from torch.utils.data import Dataset
-from transformers import BertTokenizer, BertModel
+from transformers import BertTokenizer, BertModel, AutoTokenizer
 
 
 class TokenDataset(Dataset):
@@ -112,3 +112,39 @@ class EmbeddingDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.embeddings[idx], self.labels[idx]
+
+
+class TransformerDataset(Dataset):
+    def __init__(
+        self, texts, labels=None, model_name="bert-base-uncased", max_length=512
+    ):
+        super().__init__()
+        self.texts = texts
+        self.labels = labels
+        self.max_length = max_length
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    def __len__(self):
+        return len(self.texts)
+
+    def __getitem__(self, idx):
+        if isinstance(self.texts, pd.DataFrame):
+            row = self.texts.iloc[idx].astype(str).tolist()
+            x = f"{self.tokenizer.sep_token}".join(row)
+        else:
+            x = self.texts[idx]
+        y = self.labels[idx]
+
+        return x, y
+
+    def collate_fn(self, batch):
+        texts = [item[0] for item in batch]
+        labels = [item[1] if len(item) > 1 else None for item in batch]
+        encoded = self.tokenizer(
+            texts, padding=True, truncation=True, return_tensors="pt", max_length=512
+        )
+        return {
+            "input_ids": encoded["input_ids"],
+            "attention_mask": encoded["attention_mask"],
+            "labels": torch.tensor(labels),
+        }

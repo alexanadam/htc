@@ -15,7 +15,7 @@ from data.preprocess import (
     init_seed,
 )
 from data.embedding import EmbeddingModel
-from data.dataset import BERTDataset, EmbeddingDataset
+from data.dataset import TransformerDataset, EmbeddingDataset
 from models.MLP import MLPModule
 from models.BERT import BertModule
 from utils.logger import setup_logger
@@ -27,7 +27,7 @@ from training.evaluator import HierarchicalEvaluator
 from training.trainer import Trainer
 
 from training.losses import HierarchicalBCELoss
-from training.metrics import plot_loss, plot_metrics, node_importance, plot_importance
+from training.metrics import plot_loss, plot_metrics, node_weights, plot_importance
 
 if __name__ == "__main__":
     # trackio.show()
@@ -70,10 +70,10 @@ if __name__ == "__main__":
     else:
         emb_model = EmbeddingModel(config.EMB_MODEL, logger, device=device)
         input = emb_model.compute_embeddings(data, config.EMB_BATCH, config.EMB_SIZE)
-    splits = kfold_splits(input, labels)
+    splits = kfold_splits(input, labels, config.SEED, config.CV_FOLDS)
     weight = None
     if config.WEIGHTED:
-        weight = node_importance(labels, hierarchy, config.NORM).to(device)
+        weight = node_weights(labels, hierarchy, config.NORM).to(device)
         plot_importance(
             torch.cat((weight.cpu(), torch.tensor([0.01])), dim=0),
             hierarchy_root,
@@ -89,17 +89,12 @@ if __name__ == "__main__":
         if config.FINETUNE:
             train_input = input.iloc[train_idx]
             val_input = input.iloc[val_idx]
-            dataset_cls = BERTDataset
+            dataset_cls = TransformerDataset
             dataset_args = {
                 "model_name": config.EMB_MODEL,
                 "max_length": config.EMB_SIZE,
             }
             model = BertModule(labels.shape[1], config.EMB_MODEL, config.DROPOUT)
-            for param in model.bert.parameters():
-                param.requires_grad = False
-
-            for param in model.bert.classifier.parameters():
-                param.requires_grad = True
         else:
             train_input = input[train_idx]
             val_input = input[val_idx]
@@ -127,11 +122,11 @@ if __name__ == "__main__":
         )
 
         logger.info(f"Model: {model}")
-        optimizer = torch.optim.Adam(model.parameters(), lr=config.LEARNING_RATE)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=0.01)
         logger.info(f"Optimizer: {optimizer}")
         # criterion = HybridFocalLoss(hierarchy, config.LAMBDA, config.GAMMA)
         # criterion = HierarchicalFocalLoss(hierarchy, config.LAMBDA, config.GAMMA)
-        criterion = HierarchicalBCELoss(hierarchy, config.LAMBDA, weight)
+        criterion = HierarchicalBCELoss(hierarchy, config.LAMBDA, weight, config.SOFT_LOSS)
         # criterion = torch.nn.BCEWithLogitsLoss(weight=weight)
         logger.info(f"Criterion: {criterion}")
 
@@ -230,6 +225,8 @@ if __name__ == "__main__":
         #         sliced.append(input[val_idx][final_idx])
 
         #     sliced = torch.cat(sliced, dim=0)
+        elif isinstance(results[0][key], dict):
+            logger.info(f"{key}={[fold_dicts[key] for fold_dicts in results]}")
         else:
             metrics = [fold_metrics[key] for fold_metrics in results]
             summary[key] = {

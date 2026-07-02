@@ -198,12 +198,385 @@ def violations(target, predict, hierarchy):
     violations = true_positives & parent_predicted_zero & has_ancestor
     count = np.sum(violations)
 
+    parent_predicted_one = predict[:, ancestor_list] == 1
+    no_violation = true_positives & parent_predicted_one & has_ancestor
+    no_count = np.sum(no_violation)
+
     # indices = np.where(np.any(violations, axis=1))[0]
     return {
         "violations": count / predict.size,
+        "rate": count / len(predict),
         "count": count,
         "size": predict.size,
+        "no_violation": no_count / predict.size,
+        "no_rate": no_count / len(predict),
+        "no_count": no_count,
         # "indices": indices,
+    }
+
+
+def hierarchical_error_analysis(target, predict, hierarchy, levels):
+    node_level = {}
+
+    for lvl, node_ids in levels.items():
+        for node_id in node_ids:
+            node_level[node_id] = lvl
+
+    children = {node: set(hierarchy.successors(node)) for node in hierarchy.nodes}
+
+    parent = {}
+
+    for child in hierarchy.nodes:
+        preds = list(hierarchy.predecessors(child))
+        parent[child] = preds[0] if preds else None
+
+    ancestors = {node: nx.ancestors(hierarchy, node) for node in hierarchy.nodes}
+
+    descendants = {node: nx.descendants(hierarchy, node) for node in hierarchy.nodes}
+
+    per_level = {
+        lvl: {
+            "predicted_labels": 0,
+            "target_labels": 0,
+            "wrong_predictions": 0,
+            "sibling_errors": 0,
+            "correct_child": 0,
+            "parent_only_errors": 0,
+            "parent_only_true": 0,
+            "missing_intermediate_errors": 0,
+        }
+        for lvl in sorted(levels.keys())
+    }
+
+    totals = {
+        "predicted_labels": 0,
+        "target_labels": 0,
+        "wrong_predictions": 0,
+        "sibling_errors": 0,
+        "correct_child": 0,
+        "parent_only_errors": 0,
+        "parent_only_true": 0,
+        "missing_intermediate_errors": 0,
+    }
+    for tgt_row, pred_row in zip(target, predict):
+
+        pred_nodes = set(np.flatnonzero(pred_row))
+        tgt_nodes = set(np.flatnonzero(tgt_row))
+
+        totals["predicted_labels"] += len(pred_nodes)
+        totals["target_labels"] += len(tgt_nodes)
+
+        for node in pred_nodes:
+            per_level[node_level[node]]["predicted_labels"] += 1
+
+        for node in tgt_nodes:
+            per_level[node_level[node]]["target_labels"] += 1
+
+        wrong_nodes = pred_nodes ^ tgt_nodes
+
+        totals["wrong_predictions"] += len(wrong_nodes)
+
+        for node in wrong_nodes:
+            per_level[node_level[node]]["wrong_predictions"] += 1
+
+        sibling_errors = 0
+        correct_child = 0
+
+        for p, child_set in children.items():
+
+            pred_children = child_set & pred_nodes
+            tgt_children = child_set & tgt_nodes
+
+            correct_overlap = pred_children & tgt_children
+
+            if len(correct_overlap) > 0:
+                correct_child += len(correct_overlap)
+                per_level[node_level[p]]["correct_child"] += len(correct_overlap)
+
+            if len(child_set) < 2:
+                continue
+
+            wrong_pred = pred_children - tgt_children
+            missed_true = tgt_children - pred_children
+
+            count = min(len(wrong_pred), len(missed_true))
+
+            sibling_errors += count
+
+            per_level[node_level[p]]["sibling_errors"] += count
+
+        totals["sibling_errors"] += sibling_errors
+        totals["correct_child"] += correct_child
+
+        parent_only = 0
+        parent_only_true = 0
+
+        for p, child_set in children.items():
+
+            if not child_set:
+                parent_only_true += 1
+                per_level[node_level[p]]["parent_only_true"] += 1
+                continue
+
+            if p not in pred_nodes:
+                continue
+
+            if p not in tgt_nodes:
+                continue
+
+            tgt_children = child_set & tgt_nodes
+            pred_children = child_set & pred_nodes
+
+            if len(pred_children) == 0:
+                if not tgt_children:
+                    parent_only_true += 1
+                    per_level[node_level[p]]["parent_only_true"] += 1
+                    continue
+
+                else:
+                    # ORIGINAL: Target had children, but prediction stopped at parent (error)
+                    parent_only += 1
+                    per_level[node_level[p]]["parent_only_true"] += 1
+
+        totals["parent_only_errors"] += parent_only
+        totals["parent_only_true"] += parent_only_true
+
+        missing_intermediate = 0
+
+        for node in tgt_nodes:
+
+            if node in pred_nodes:
+                continue
+
+            has_target_ancestor_predicted = bool(
+                ancestors[node] & pred_nodes & tgt_nodes
+            )
+
+            has_target_descendant_predicted = bool(
+                descendants[node] & pred_nodes & tgt_nodes
+            )
+
+            if has_target_ancestor_predicted and has_target_descendant_predicted:
+
+                missing_intermediate += 1
+
+                per_level[node_level[node]]["missing_intermediate_errors"] += 1
+
+        totals["missing_intermediate_errors"] += missing_intermediate
+
+    rates = {
+        "wrong_prediction_rate": totals["wrong_predictions"]
+        / max(1, totals["target_labels"]),
+        "sibling_error_rate": totals["sibling_errors"]
+        / max(1, totals["wrong_predictions"]),
+        "parent_only_rate": totals["parent_only_errors"] / len(predict),
+        "parent_only_no_target_rate": totals["parent_only_errors"] / len(predict),
+        "missing_intermediate_rate": totals["missing_intermediate_errors"]
+        / len(predict),
+    }
+    means = {k: v / len(predict) for k, v in totals.items()}
+
+    return {"totals": totals, "per_level": per_level, "rates": rates, "means": means}
+
+
+def calculate_hierarchical_errors(target, predict, hierarchy, levels):
+    fp_matrix = (predict == 1) & (target == 0)
+    fn_matrix = (predict == 0) & (target == 1)
+
+    tp_matrix = (predict == 1) & (target == 1)
+
+    ancestors = {n: list(nx.ancestors(hierarchy, n)) for n in hierarchy.nodes()}
+    descendants = {n: list(nx.descendants(hierarchy, n)) for n in hierarchy.nodes()}
+
+    siblings = {n: set() for n in hierarchy.nodes()}
+    for n in hierarchy.nodes:
+        for p in hierarchy.predecessors(n):
+            for c in hierarchy.successors(p):
+                if c != n:
+                    siblings[n].add(c)
+    siblings = {n: list(siblings[n]) for n in hierarchy.nodes}
+
+    node_level = {}
+    for lvl, node_ids in levels.items():
+        for node_id in node_ids:
+            node_level[node_id] = lvl
+
+    errors = {
+        "totals": 0,
+        "branch_omitted": 0,
+        "branch_added": 0,
+        "additional_descendants": 0,
+        "descendant_missing": 0,
+        "sibling_error": 0,
+        "ancestor_missing": 0,
+    }
+
+    per_level = {
+        lvl: {
+            "branch_omitted": 0,
+            "branch_added": 0,
+            "additional_descendants": 0,
+            "descendant_missing": 0,
+            "sibling_error": 0,
+            "ancestor_missing": 0,
+        }
+        for lvl in sorted(levels.keys())
+    }
+
+    success = {
+        "ancestor_present": 0,
+        "descendants_present": 0,
+        "descendants_correctly_omitted": 0,
+    }
+    success_per_level = {
+        lvl: {
+            "ancestor_present": 0,
+            "descendants_present": 0,
+            "descendants_correctly_omitted": 0,
+        }
+        for lvl in sorted(levels.keys())
+    }
+
+    # error_nodes = {k: [] for k in errors}
+
+    for n in hierarchy.nodes:
+        fps = fp_matrix[:, n]
+        if np.any(fps):
+            has_fn_sibling = (
+                np.any(fn_matrix[:, siblings[n]], axis=1)
+                if siblings[n]
+                else np.zeros(len(target), dtype=bool)
+            )
+            has_tgt_ancestor = (
+                np.any(target[:, ancestors[n]] == 1, axis=1)
+                if ancestors[n]
+                else np.zeros(len(target), dtype=bool)
+            )
+
+            mask_sibling = fps & has_fn_sibling
+            mask_add_desc = fps & ~mask_sibling & has_tgt_ancestor
+            mask_branch_add = fps & ~mask_sibling & ~has_tgt_ancestor
+
+            errors["sibling_error"] += np.sum(mask_sibling)
+            errors["additional_descendants"] += np.sum(mask_add_desc)
+            errors["branch_added"] += np.sum(mask_branch_add)
+
+            per_level[node_level[n]]["sibling_error"] += np.sum(mask_sibling)
+            per_level[node_level[n]]["additional_descendants"] += np.sum(mask_add_desc)
+            per_level[node_level[n]]["branch_added"] += np.sum(mask_branch_add)
+
+        fns = fn_matrix[:, n]
+        if np.any(fns):
+            has_prd_descendant = (
+                np.any(predict[:, descendants[n]] == 1, axis=1)
+                if descendants[n]
+                else np.zeros(len(target), dtype=bool)
+            )
+            has_prd_ancestor = (
+                np.any(predict[:, ancestors[n]] == 1, axis=1)
+                if ancestors[n]
+                else np.zeros(len(target), dtype=bool)
+            )
+            has_fp_sibling = (
+                np.any(fp_matrix[:, siblings[n]], axis=1)
+                if siblings[n]
+                else np.zeros(len(target), dtype=bool)
+            )
+
+            mask_anc_missing = fns & has_prd_descendant
+            mask_desc_missing = (
+                fns & ~mask_anc_missing & (has_prd_ancestor | has_fp_sibling)
+            )
+            mask_branch_omit = (
+                fns
+                & ~mask_anc_missing
+                & ~mask_desc_missing
+                & (~has_prd_ancestor & ~has_prd_descendant)
+            )
+
+            errors["ancestor_missing"] += np.sum(mask_anc_missing)
+            errors["descendant_missing"] += np.sum(mask_desc_missing)
+            errors["branch_omitted"] += np.sum(mask_branch_omit)
+
+            per_level[node_level[n]]["ancestor_missing"] += np.sum(mask_anc_missing)
+            per_level[node_level[n]]["descendant_missing"] += np.sum(mask_desc_missing)
+            per_level[node_level[n]]["branch_omitted"] += np.sum(mask_branch_omit)
+
+            #     if any(s in fn_indices for s in siblings[v]):
+            #         errors['sibling_error'] += 1
+            #         error_nodes['sibling_error'].append(v)
+            #     elif any(target[a] == 1 for a in ancestors[v]):
+            #         errors['additional_descendants'] += 1
+            #         error_nodes['additional_descendants'].append(v)
+            #     elif not any(target[a] == 1 for a in ancestors[v]):
+            #         errors['branch_added'] += 1
+            #         error_nodes['branch_added'].append(v)
+
+            # for v in fn_indices:
+            #     # if any(s in fp_indices for s in siblings[v]):
+            #     #     errors['sibling_error'] += 1
+            #     #     error_nodes['sibling_error'].append(v)
+            #     if any(predict[d] == 1 for d in descendants[v]):
+            #         errors['ancestor_missing'] += 1
+            #         error_nodes['ancestor_missing'].append(v)
+            #     elif any(predict[a] == 1 for a in ancestors[v]):
+            #         errors['descendant_missing'] += 1
+            #         error_nodes['descendant_missing'].append(v)
+            #     elif not any(predict[a] == 1 for a in ancestors[v]) and not any(predict[d] == 1 for d in descendants[v]):
+            #         errors['branch_omitted'] += 1
+            #         error_nodes['branch_omitted'].append(v)
+
+        tps = tp_matrix[:, n]
+        if np.any(tps):
+            has_prd_ancestor_tp = (
+                np.any(predict[:, ancestors[n]] == 1, axis=1)
+                if ancestors[n]
+                else np.zeros(len(target), dtype=bool)
+            )
+            has_tp_descendant = (
+                np.any(tp_matrix[:, descendants[n]], axis=1)
+                if descendants[n]
+                else np.zeros(len(target), dtype=bool)
+            )
+            has_prd_descendant_tp = (
+                np.any(predict[:, descendants[n]] == 1, axis=1)
+                if descendants[n]
+                else np.zeros(len(target), dtype=bool)
+            )
+            has_tgt_descendant_tp = (
+                np.any(target[:, descendants[n]] == 1, axis=1)
+                if descendants[n]
+                else np.zeros(len(target), dtype=bool)
+            )
+
+            mask_anc_present = tps & has_prd_ancestor_tp
+            mask_desc_present = tps & has_tp_descendant
+            mask_stopped_level = tps & ~has_prd_descendant_tp & ~has_tgt_descendant_tp
+
+            success["ancestor_present"] += np.sum(mask_anc_present)
+            success["descendants_present"] += np.sum(mask_desc_present)
+            success["descendants_correctly_omitted"] += np.sum(mask_stopped_level)
+
+            success_per_level[node_level[n]]["ancestor_present"] += np.sum(
+                mask_anc_present
+            )
+            success_per_level[node_level[n]]["descendants_present"] += np.sum(
+                mask_desc_present
+            )
+            success_per_level[node_level[n]]["descendants_correctly_omitted"] += np.sum(
+                mask_stopped_level
+            )
+    total_errors_calculated = sum(errors.values())
+    actual_wrong_predictions = np.sum(target != predict)
+    errors["totals"] = total_errors_calculated
+
+    assert total_errors_calculated == actual_wrong_predictions, "Mismatch in errors"
+
+    return {
+        "errors": errors,
+        "errors_per_level": per_level,
+        "success": success,
+        "success_per_level": success_per_level,
     }
 
 
@@ -392,6 +765,34 @@ def node_importance(labels, hierarchy, norm=False):
     error = serial_bitflip_error(target, predict, norm)
 
     return error
+
+
+def node_weights(labels, hierarchy, norm=False, alpha=1e-5):
+    weights = np.zeros(labels.shape[1])
+    parents_map = get_predecessor_map(hierarchy)
+
+    for c in hierarchy.nodes:
+        p = parents_map[c]
+        if len(p) > 0:
+            p = p[0]
+
+        parent_active_mask = labels[:, p] == 1
+
+        if np.sum(parent_active_mask) == 0:
+            weights[c] = 0.0
+            continue
+
+        P_choose = np.sum(labels[parent_active_mask, c] == 1)
+
+        P_nochoose = np.sum(labels[parent_active_mask, c] == 0)
+
+        weights[c] = np.log((P_choose + alpha) / (P_nochoose + alpha))
+
+    if norm:
+        prob = np.sum(labels, axis=0) / np.sum(labels)
+        weights *= prob
+
+    return torch.tensor(weights)
 
 
 def plot_loss(losses, path, logger):

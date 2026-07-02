@@ -5,12 +5,13 @@ from data.preprocess import get_parents_list, get_predecessor_map
 
 
 class HierarchicalBCELoss(nn.Module):
-    def __init__(self, hierarchy, lambda_reg=1, weight=None):
+    def __init__(self, hierarchy, lambda_reg=1, weight=None, soft=False):
         super().__init__()
         self.bce = nn.BCEWithLogitsLoss()
         self.lambda_reg = lambda_reg
         self.parent_map = get_parents_list(hierarchy)
         self.weight = weight
+        self.soft = soft
 
     def forward(self, logits, targets):
         device = logits.device
@@ -24,7 +25,10 @@ class HierarchicalBCELoss(nn.Module):
         count = 0
 
         for child_idx, parent_idxs in self.parent_map.items():
-            target_child = targets[:, child_idx]
+            if self.soft:
+                target_child = F.sigmoid(logits[:, child_idx])
+            else:
+                target_child = targets[:, child_idx]
             for parent_idx in parent_idxs:
                 # p_parent = probs[:, parent_idx]
                 log_p = F.logsigmoid(logits[:, parent_idx])
@@ -43,7 +47,7 @@ class HierarchicalBCELoss(nn.Module):
         return total_loss, hier_loss
 
     def extra_repr(self):
-        return f"lambda_reg: {self.lambda_reg}"
+        return f"lambda_reg: {self.lambda_reg}\n weight: {self.weight is not None}\n soft: {self.soft}"
 
 
 class AncestorBCELoss(nn.Module):

@@ -1,6 +1,13 @@
 import torch
 import numpy as np
-from training.metrics import ahc_evaluation, standard_evaluation, analysis, violations
+from training.metrics import (
+    ahc_evaluation,
+    standard_evaluation,
+    analysis,
+    violations,
+    hierarchical_error_analysis,
+    calculate_hierarchical_errors
+)
 
 
 class Evaluator:
@@ -69,9 +76,7 @@ class HierarchicalEvaluator(Evaluator):
         self.file = filename
         self.npz = npz
 
-    def __call__(
-        self, model, dataloader, device, analyze=False, save=False
-    ):
+    def __call__(self, model, dataloader, device, analyze=False, save=False):
         y_true, y_pred = self._get_predictions(model, dataloader, device)
 
         metrics = standard_evaluation(y_true, y_pred, self.average)
@@ -79,6 +84,8 @@ class HierarchicalEvaluator(Evaluator):
         if analyze and self.file is not None:
             analysis(y_true, y_pred, self.classes, self.file, self.levels)
             metrics.update(violations(y_true, y_pred, self.hierarchy))
+            metrics.update(hierarchical_error_analysis(y_true, y_pred, self.hierarchy, self.levels))
+            metrics.update(calculate_hierarchical_errors(y_true, y_pred, self.hierarchy, self.levels))
             tr = np.sum(y_true, axis=1)
             pr = np.sum(y_pred, axis=1)
             predictions = {
