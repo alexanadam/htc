@@ -1,0 +1,454 @@
+{
+  "name": "root",
+  "children": [
+    {
+      "name": "CS",
+      "children": [
+        {
+          "name": "Algorithm design"
+        },
+        {
+          "name": "Bioinformatics"
+        },
+        {
+          "name": "Computer graphics"
+        },
+        {
+          "name": "Computer programming"
+        },
+        {
+          "name": "Computer vision"
+        },
+        {
+          "name": "Cryptography"
+        },
+        {
+          "name": "Data structures"
+        },
+        {
+          "name": "Distributed computing"
+        },
+        {
+          "name": "Image processing"
+        },
+        {
+          "name": "Machine learning"
+        },
+        {
+          "name": "Operating systems"
+        },
+        {
+          "name": "Parallel computing"
+        },
+        {
+          "name": "Relational databases"
+        },
+        {
+          "name": "Software engineering"
+        },
+        {
+          "name": "Structured Storage"
+        },
+        {
+          "name": "Symbolic computation"
+        },
+        {
+          "name": "network security"
+        }
+      ]
+    },
+    {
+      "name": "Civil",
+      "children": [
+        {
+          "name": "Ambient Intelligence"
+        },
+        {
+          "name": "Construction Management"
+        },
+        {
+          "name": "Geotextile"
+        },
+        {
+          "name": "Green Building"
+        },
+        {
+          "name": "Rainwater Harvesting"
+        },
+        {
+          "name": "Remote Sensing"
+        },
+        {
+          "name": "Smart Material"
+        },
+        {
+          "name": "Solar Energy"
+        },
+        {
+          "name": "Stealth Technology"
+        },
+        {
+          "name": "Suspension Bridge"
+        },
+        {
+          "name": "Water Pollution"
+        }
+      ]
+    },
+    {
+      "name": "ECE",
+      "children": [
+        {
+          "name": "Analog signal processing"
+        },
+        {
+          "name": "Control engineering"
+        },
+        {
+          "name": "Digital control"
+        },
+        {
+          "name": "Electric motor"
+        },
+        {
+          "name": "Electrical circuits"
+        },
+        {
+          "name": "Electrical generator"
+        },
+        {
+          "name": "Electrical network"
+        },
+        {
+          "name": "Electricity"
+        },
+        {
+          "name": "Lorentz force law"
+        },
+        {
+          "name": "Microcontroller"
+        },
+        {
+          "name": "Operational amplifier"
+        },
+        {
+          "name": "PID controller"
+        },
+        {
+          "name": "Satellite radio"
+        },
+        {
+          "name": "Signal-flow graph"
+        },
+        {
+          "name": "State space representation"
+        },
+        {
+          "name": "System identification"
+        },
+        {
+          "name": "Voltage law"
+        }
+      ]
+    },
+    {
+      "name": "MAE",
+      "children": [
+        {
+          "name": "Fluid mechanics"
+        },
+        {
+          "name": "Hydraulics"
+        },
+        {
+          "name": "Internal combustion engine"
+        },
+        {
+          "name": "Machine design"
+        },
+        {
+          "name": "Manufacturing engineering"
+        },
+        {
+          "name": "Materials Engineering"
+        },
+        {
+          "name": "Strength of materials"
+        },
+        {
+          "name": "Thermodynamics"
+        },
+        {
+          "name": "computer-aided design"
+        }
+      ]
+    },
+    {
+      "name": "Medical",
+      "children": [
+        {
+          "name": "Addiction"
+        },
+        {
+          "name": "Allergies"
+        },
+        {
+          "name": "Alzheimer's Disease"
+        },
+        {
+          "name": "Ankylosing Spondylitis"
+        },
+        {
+          "name": "Anxiety"
+        },
+        {
+          "name": "Asthma"
+        },
+        {
+          "name": "Atopic Dermatitis"
+        },
+        {
+          "name": "Atrial Fibrillation"
+        },
+        {
+          "name": "Autism"
+        },
+        {
+          "name": "Bipolar Disorder"
+        },
+        {
+          "name": "Birth Control"
+        },
+        {
+          "name": "Cancer"
+        },
+        {
+          "name": "Children's Health"
+        },
+        {
+          "name": "Crohn's Disease"
+        },
+        {
+          "name": "Dementia"
+        },
+        {
+          "name": "Depression"
+        },
+        {
+          "name": "Diabetes"
+        },
+        {
+          "name": "Digestive Health"
+        },
+        {
+          "name": "Emergency Contraception"
+        },
+        {
+          "name": "Fungal Infection"
+        },
+        {
+          "name": "HIV/AIDS"
+        },
+        {
+          "name": "Headache"
+        },
+        {
+          "name": "Healthy Sleep"
+        },
+        {
+          "name": "Heart Disease"
+        },
+        {
+          "name": "Hepatitis C"
+        },
+        {
+          "name": "Hereditary Angioedema"
+        },
+        {
+          "name": "Hypothyroidism"
+        },
+        {
+          "name": "Idiopathic Pulmonary Fibrosis"
+        },
+        {
+          "name": "Irritable Bowel Syndrome"
+        },
+        {
+          "name": "Kidney Health"
+        },
+        {
+          "name": "Low Testosterone"
+        },
+        {
+          "name": "Lymphoma"
+        },
+        {
+          "name": "Medicare"
+        },
+        {
+          "name": "Menopause"
+        },
+        {
+          "name": "Mental Health"
+        },
+        {
+          "name": "Migraine"
+        },
+        {
+          "name": "Multiple Sclerosis"
+        },
+        {
+          "name": "Myelofibrosis"
+        },
+        {
+          "name": "Osteoarthritis"
+        },
+        {
+          "name": "Osteoporosis"
+        },
+        {
+          "name": "Overactive Bladder"
+        },
+        {
+          "name": "Parenting"
+        },
+        {
+          "name": "Parkinson's Disease"
+        },
+        {
+          "name": "Polycythemia Vera"
+        },
+        {
+          "name": "Psoriasis"
+        },
+        {
+          "name": "Psoriatic Arthritis"
+        },
+        {
+          "name": "Rheumatoid Arthritis"
+        },
+        {
+          "name": "Schizophrenia"
+        },
+        {
+          "name": "Senior Health"
+        },
+        {
+          "name": "Skin Care"
+        },
+        {
+          "name": "Smoking Cessation"
+        },
+        {
+          "name": "Sports Injuries"
+        },
+        {
+          "name": "Sprains and Strains"
+        },
+        {
+          "name": "Stress Management"
+        },
+        {
+          "name": "Weight Loss"
+        }
+      ]
+    },
+    {
+      "name": "Psychology",
+      "children": [
+        {
+          "name": "Antisocial personality disorder"
+        },
+        {
+          "name": "Attention"
+        },
+        {
+          "name": "Borderline personality disorder"
+        },
+        {
+          "name": "Child abuse"
+        },
+        {
+          "name": "Depression"
+        },
+        {
+          "name": "Eating disorders"
+        },
+        {
+          "name": "False memories"
+        },
+        {
+          "name": "Gender roles"
+        },
+        {
+          "name": "Leadership"
+        },
+        {
+          "name": "Media violence"
+        },
+        {
+          "name": "Nonverbal communication"
+        },
+        {
+          "name": "Person perception"
+        },
+        {
+          "name": "Prejudice"
+        },
+        {
+          "name": "Prenatal development"
+        },
+        {
+          "name": "Problem-solving"
+        },
+        {
+          "name": "Prosocial behavior"
+        },
+        {
+          "name": "Schizophrenia"
+        },
+        {
+          "name": "Seasonal affective disorder"
+        },
+        {
+          "name": "Social cognition"
+        }
+      ]
+    },
+    {
+      "name": "biochemistry",
+      "children": [
+        {
+          "name": "Cell biology"
+        },
+        {
+          "name": "DNA/RNA sequencing"
+        },
+        {
+          "name": "Enzymology"
+        },
+        {
+          "name": "Genetics"
+        },
+        {
+          "name": "Human Metabolism"
+        },
+        {
+          "name": "Immunology"
+        },
+        {
+          "name": "Molecular biology"
+        },
+        {
+          "name": "Northern blotting"
+        },
+        {
+          "name": "Polymerase chain reaction"
+        },
+        {
+          "name": "Southern blotting"
+        }
+      ]
+    }
+  ]
+}
