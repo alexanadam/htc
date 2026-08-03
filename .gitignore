@@ -6,6 +6,6 @@ logs/
 .DS_Store
 __pycache__/
 .venv3.12/
-test.py
+tests.py
 hbgl*
 fwos*
