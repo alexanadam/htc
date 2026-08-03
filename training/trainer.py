@@ -76,7 +76,10 @@ class Trainer:
     def _train_epoch(self, epoch):
         self.model.train()
         running_loss = 0.0
-        aux_loss = 0.0
+        ma_loss = 0.0
+        md_loss = 0.0
+        ed_loss = 0.0
+        es_loss = 0.0
 
         for batch_id, batch in enumerate(self.train_loader, start=1):
             if isinstance(batch, dict):
@@ -89,27 +92,25 @@ class Trainer:
 
             self.optimizer.zero_grad()
 
-            if isinstance(inputs, dict):
-                outputs = self.model(**inputs)
-            else:
-                outputs = self.model(inputs)
+            outputs = self.model(**inputs) if isinstance(inputs, dict) else self.model(inputs)
 
             losses = self.criterion(outputs, targets)
             try:
-                loss, extras = losses
+                loss, *extras = losses
             except TypeError:
                 loss = losses
                 extras = None
             loss.backward()
 
-            # if self.grad_clip is not None:
-            #     nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
-
             self.optimizer.step()
 
             running_loss += loss.item()
             if extras:
-                aux_loss += extras.item()
+                if isinstance(extras, list):
+                    ma_loss += extras[1].item()
+                    md_loss += extras[2].item()
+                    ed_loss += extras[3].item()
+                    es_loss += extras[4].item()
 
             if batch_id % 50 == 1:
                 self.logger.info(
@@ -119,16 +120,29 @@ class Trainer:
                 )
 
         metrics = {"train_loss": running_loss / len(self.train_loader)}
-        if aux_loss:
-            metrics["train_aux"] = aux_loss / len(self.train_loader)
-            metrics["train_bce"] = metrics["train_loss"] - metrics["train_aux"]
-            self.logger.info(f"Epoch {epoch}: Aux Loss: {metrics['train_aux']:.4f}")
+        metrics["train_ma"] = ma_loss / len(self.train_loader)
+        metrics["train_md"] = md_loss / len(self.train_loader)
+        metrics["train_ed"] = ed_loss / len(self.train_loader)
+        metrics["train_es"] = es_loss / len(self.train_loader)
+        metrics["train_bce"] = (
+            metrics["train_loss"]
+            - metrics["train_ma"]
+            - metrics["train_md"]
+            - metrics["train_ed"]
+            - metrics["train_es"]
+        )
+        self.logger.info(
+            f"Epoch {epoch}: MA Loss: {metrics['train_ma']:.4f} MD Loss: {metrics['train_md']:.4f} ED Loss: {metrics['train_ed']:.4f} ES Loss: {metrics['train_es']:.4f}"
+        )
         return metrics
 
     def _validate_epoch(self):
         self.model.eval()
         running_loss = 0.0
-        aux_loss = 0.0
+        ma_loss = 0.0
+        md_loss = 0.0
+        ed_loss = 0.0
+        es_loss = 0.0
 
         with torch.no_grad():
             for batch in self.val_loader:
@@ -146,25 +160,38 @@ class Trainer:
                     outputs = self.model(inputs)
                 losses = self.criterion(outputs, targets)
                 try:
-                    loss, extras = losses
+                    loss, *extras = losses
                 except TypeError:
                     loss = losses
                     extras = None
 
                 running_loss += loss.item()
             if extras:
-                aux_loss += extras.item()
+                if isinstance(extras, list):
+                    ma_loss += extras[1].item()
+                    md_loss += extras[2].item()
+                    ed_loss += extras[3].item()
+                    es_loss += extras[4].item()
 
         metrics = {"val_loss": running_loss / len(self.val_loader)}
-        if aux_loss:
-            metrics["val_aux"] = aux_loss / len(self.val_loader)
-            metrics["val_bce"] = metrics["val_loss"] - metrics["val_aux"]
-            self.logger.info(f"Val aux loss: {metrics['val_aux']:.4f}")
+        metrics["val_ma"] = ma_loss / len(self.val_loader)
+        metrics["val_md"] = md_loss / len(self.val_loader)
+        metrics["val_ed"] = ed_loss / len(self.val_loader)
+        metrics["val_es"] = es_loss / len(self.val_loader)
+        metrics["val_bce"] = (
+            metrics["val_loss"]
+            - metrics["val_ma"]
+            - metrics["val_md"]
+            - metrics["val_ed"]
+            - metrics["val_es"]
+        )
+        self.logger.info(
+            f"Val MA loss: {metrics['val_ma']:.4f} Val MD loss: {metrics['val_md']:.4f} Val ED loss: {metrics['val_ed']:.4f} Val ES loss: {metrics['val_es']:.4f}"
+        )
         return metrics
 
     def train(self, epochs, track):
-        # best_val_loss = float("inf")
-        self.logger.info(f"Training for {self.train_loader.batch_size} batches")
+        self.logger.info(f"Training for {self.train_loader.batch_size} batch size")
         losses = defaultdict(list)
         for epoch in range(self.start_epoch, epochs + 1):
             train_losses = self._train_epoch(epoch)

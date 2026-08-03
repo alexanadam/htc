@@ -30,7 +30,6 @@ from training.losses import HierarchicalBCELoss
 from training.metrics import plot_loss, plot_metrics, node_weights, plot_importance
 
 if __name__ == "__main__":
-    # trackio.show()
     init_seed(config.SEED)
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -55,6 +54,7 @@ if __name__ == "__main__":
     logger = setup_logger(args.dataset)
 
     logger.info(f"Starting {logger.name} run")
+    logger.info(f"seed {config.SEED}, epochs {config.EPOCHS}")
 
     device = get_best_device(logger)
 
@@ -85,6 +85,7 @@ if __name__ == "__main__":
     results = []
 
     for fold, (train_idx, val_idx) in enumerate(splits, start=1):
+        # def opt_objective(trial):
         logger.info(f"Starting cv fold {fold}")
         if config.FINETUNE:
             train_input = input.iloc[train_idx]
@@ -122,11 +123,28 @@ if __name__ == "__main__":
         )
 
         logger.info(f"Model: {model}")
-        optimizer = torch.optim.AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=0.01)
+        optimizer = torch.optim.AdamW(
+            model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.DECAY
+        )
         logger.info(f"Optimizer: {optimizer}")
-        # criterion = HybridFocalLoss(hierarchy, config.LAMBDA, config.GAMMA)
-        # criterion = HierarchicalFocalLoss(hierarchy, config.LAMBDA, config.GAMMA)
-        criterion = HierarchicalBCELoss(hierarchy, config.LAMBDA, weight, config.SOFT_LOSS)
+
+        # lambda_params = {
+        #     "lambda_MA": 0, # trial.suggest_float("lambda_ma", 0.1, 2.0),
+        #     "lambda_MD": 0, # trial.suggest_float("lambda_md", 0.1, 2.0),
+        #     "lambda_ED": 0, # trial.suggest_float("lambda_ed", 0.1, 2.0),
+        #     "lambda_ES": trial.suggest_float("lambda_es", 0.1, 2.0),
+        #     "margin": trial.suggest_float("margin", 0.1, 0.5)
+        # }
+        params = {
+            "lambda_MA": config.L_MA,
+            "lambda_MD": config.L_MD,
+            "lambda_ED": config.L_ED,
+            "lambda_ES": config.L_ES,
+            "margin": config.MARGIN,
+        }
+        criterion = HierarchicalBCELoss(
+            hierarchy, weight, config.SOFT_LOSS, **params
+        )
         # criterion = torch.nn.BCEWithLogitsLoss(weight=weight)
         logger.info(f"Criterion: {criterion}")
 
@@ -151,7 +169,6 @@ if __name__ == "__main__":
             val_loader=val_loader,
             evaluator=evaluator,
             early_stopper=early_stopper,
-            # checkpoint_dir=config.CHECKPOINT_PATH,
         )
         if config.TRACK:
             trackio.init(
@@ -179,30 +196,31 @@ if __name__ == "__main__":
             logger,
         )
 
-        # indices = result["indices"]
-        # rest = np.setdiff1d(np.arange(len(val_idx)), indices)
-        # if len(rest) >= len(indices):
-        #     selected = rest[torch.randperm(len(rest))[: len(indices)]]
-        # else:
-        #     selected = rest
-        # final_idx = np.concat([indices, selected])
-        # sliced_data.append(input[val_idx][final_idx])
-        # sliced_labels.append(labels[val_idx][final_idx])
-
-        # result.pop("indices")
         results.append(result)
+        #     return result["macro_f1"], result["micro_f1"]
 
-    # sliced_data = torch.cat(sliced_data, dim=0)
-    # sliced_labels = np.concat(sliced_labels)
+        # study = optuna.create_study(
+        #     study_name="bert-lambda-tuning",
+        #     directions=["maximize", "maximize"],
+        #     sampler=optuna.samplers.TPESampler(seed=config.SEED),
+        #     pruner=optuna.pruners.HyperbandPruner()
+        # )
 
-    # torch.save(
-    #     {"data": sliced_data, "labels": sliced_labels},
-    #     os.path.join(config.FORC_PATH, "sliced.pt"),
-    # )
+        # trials = 10
+        # logger.info(f"{trials} trials")
+        # study.optimize(opt_objective, n_trials=trials)
+
+        # # logger.info(f"Best Lambdas found: {study.best_params}")
+        # for i, trial in enumerate(study.best_trials):
+        #     logger.info(f"\nTrade-off Option {i+1}:")
+        #     logger.info(f"  macro-F1: {trial.values[0]:.4f}")
+        #     logger.info(f"  micro-F1:   {trial.values[1]:.4f}")
+        #     logger.info("  Lambdas:")
+        #     for key, value in trial.params.items():
+        #         logger.info(f"    {key}: {value:.4f}")
 
     summary = {}
     averaged_losses = {}
-    # sliced = []
 
     for key in results[0].keys():
 
@@ -213,18 +231,6 @@ if __name__ == "__main__":
             trunc_losses = [fold_losses[:length] for fold_losses in losses]
 
             averaged_losses[key] = np.mean(trunc_losses, axis=0).tolist()
-        # elif isinstance(results[0][key], np.ndarray):
-        #     for fold, (train_idx, val_idx) in enumerate(splits):
-        #         indices = results[fold][key]
-        #         rest = np.setdiff1d(np.arange(len(val_idx)), indices)
-        #         if len(rest) >= len(indices):
-        #             selected = rest[torch.randperm(len(rest))[: len(indices)]]
-        #         else:
-        #             selected = rest
-        #         final_idx = torch.cat([indices, selected])
-        #         sliced.append(input[val_idx][final_idx])
-
-        #     sliced = torch.cat(sliced, dim=0)
         elif isinstance(results[0][key], dict):
             logger.info(f"{key}={[fold_dicts[key] for fold_dicts in results]}")
         else:

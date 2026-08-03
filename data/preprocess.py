@@ -64,22 +64,16 @@ def load_WOS(path, classes):
 
     data = pd.read_excel(os.path.join(path, "Data.xlsx"))
 
-    # data = data[data["area"] != "Bamboo as a Building Material"]
-    # data = data.drop(data[data["area"] == "Bamboo as a Building Material"].index)
-
     data["Domain"] = data["Domain"].apply(lambda x: [x.strip()])
     data["area"] = data["area"].str.strip()
-    data = data[data["area"] != "Bamboo as a Building Material"]
 
-    # maps = data.groupby("Y")["area"].agg(lambda x: list(set(x)))
-    maps = data.groupby("Y")["area"].agg(lambda x: [" - ".join(set(x.astype(str)))])
-    data["level2"] = data["Y"].map(maps)
-
-    data["labels"] = data["Domain"] + data["level2"]
+    data = data[data.groupby("area")["area"].transform("size") >= 10]
+    data["labels"] = data["Domain"] + data["area"].apply(lambda x: [x.strip()])
 
     data["Abstract"] = data["Abstract"].apply(clean_data)
     data["keywords"] = data["keywords"].apply(clean_data)
-    X = data[["Abstract", "keywords"]]
+    # X = data[["Abstract", "keywords"]]
+    X = data[["Abstract"]]
 
     mlb = MultiLabelBinarizer(classes=classes)
     Y = mlb.fit_transform(data["labels"])
@@ -126,6 +120,7 @@ def load_FORC(path, classes, with_weak=True):
     data["title"] = data["title"].apply(clean_data)
     data["abstract"] = data["abstract"].astype(str).fillna("").apply(clean_data)
     X = data[["title", "abstract", "publisher", "booktitle", "author", "venue"]]
+    # X = data[["title", "abstract"]]
 
     mlb = MultiLabelBinarizer(classes=classes)
     Y = mlb.fit_transform(data["labels"])
@@ -185,8 +180,6 @@ def get_hierarchy(hierarchy_path, nodes, root_excl=None):
 
     graph = nx.DiGraph()
     mapping = {value: idx for idx, value in enumerate(nodes)}
-    # if root is not None:
-    #     mapping[root] = len(nodes)
 
     def add_nodes_edges(data, parent=None):
         name = data["name"].strip()
@@ -212,9 +205,6 @@ def get_hierarchy(hierarchy_path, nodes, root_excl=None):
 
 def get_parents(hierarchy, node):
     return nx.ancestors(hierarchy, node)
-    # if root is not None:
-    #     parents.discard(root)
-    # return parents
 
 
 def get_predecessor_map(hierarchy):
@@ -253,3 +243,74 @@ def get_levels(hierarchy):
         level = nx.shortest_path_length(hierarchy, root, node)
         grouped[level].append(node)
     return grouped
+
+
+def get_depths(hierarchy):
+    node_depths = np.ones(len(hierarchy))
+    roots = [n for n, d in hierarchy.in_degree() if d == 0]
+
+    for root in roots:
+        depths = nx.single_source_shortest_path_length(hierarchy, root)
+        for node, dist in depths.items():
+            node_depths[node] = dist + 1  #18:46
+
+    return node_depths
+
+
+def get_children(hierarchy):
+    return {n: list(hierarchy.successors(n)) for n in hierarchy.nodes()}
+
+
+import json
+
+def save_to_json(X_subset, Y_subset, classes, output_filename):
+    # abstracts = X_subset["Abstract"].tolist()
+    abstracts = X_subset.apply(
+        lambda row: f"[SEP]".join(row.astype(str)), 
+        axis=1
+    ).tolist()
+    
+    data_to_save = []
+    
+    for text, y_row in zip(abstracts, Y_subset):
+        doc_label = [classes[i] for i, val in enumerate(y_row) if val > 0]
+        
+        doc_dict = {
+            'doc_token': text,
+            'doc_label': doc_label,
+            'doc_topic': [],
+            'doc_keyword': []
+        }
+        data_to_save.append(doc_dict)
+        
+    with open(output_filename, 'w', encoding='utf-8') as f:
+        for item in data_to_save:
+            f.write(json.dumps(item) + '\n')
+
+
+def export_hierarchy(hierarchy, classes, filename):
+    classes = classes + ["Root"]
+    roots = [n for n, d in hierarchy.in_degree() if d == 0]
+
+    root = roots[0]
+
+    with open(filename, 'w', encoding='utf-8') as f:
+        queue = [root]
+        visited = {root}
+
+        while queue:
+            current_node = queue.pop(0)
+
+            children = list(hierarchy.successors(current_node))
+            if children:
+                parent_name = classes[current_node]
+                children_names = [classes[c] for c in children]
+                line_elements = [parent_name] + children_names
+
+                line = "\t".join(line_elements)
+                f.write(line + "\n")
+
+                for child in children:
+                    if child not in visited:
+                        visited.add(child)
+                        queue.append(child)

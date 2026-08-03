@@ -81,13 +81,6 @@ def ahc_evaluation(target, predict, hierarchy):
                 (pred_distances.get(label, np.inf) for label in true_indices),
                 default=np.inf,
             )
-            # min_d = np.inf
-            # for label in true_indices:
-            #     try:
-            #         d = nx.shortest_path_length(graph, pred, label)
-            #         min_d = min(min_d, d)
-            #     except nx.NetworkXNoPath:
-            #         continue
             if min_d < np.inf:
                 distances.append(min_d)
         if distances:
@@ -114,7 +107,6 @@ def analysis(target, predict, classes, log_analysis, levels=None):
     )
 
     for i in range(len(classes)):
-        # TN, FP, FN, TP = cms[i].ravel()
         results.append(
             {
                 "label": classes[i],
@@ -125,7 +117,6 @@ def analysis(target, predict, classes, log_analysis, levels=None):
                 "f1": f1[i],
             }
         )
-        # results[f"freq_{classes[i]}"] = label_frequency[i]
     res = pd.DataFrame(results)
 
     aggregates = []
@@ -177,14 +168,6 @@ def analysis(target, predict, classes, log_analysis, levels=None):
 
 def violations(target, predict, hierarchy):
     assert predict.shape == target.shape
-    # count = 0
-    # ancestor_map = get_predecessor_map(hierarchy)
-    # for i, sample in enumerate(target):
-    #     for j, label in enumerate(sample):
-    #         if label == 1 and predict[i][j] == 1:
-    #             if ancestor_map[j]:
-    #                 if predict[i][ancestor_map[j][0]] == 0:
-    #                     count += 1
     ancestor_map = get_predecessor_map(hierarchy)
     ancestor_list = [
         ancestor_map[key][0] if ancestor_map[key] else False
@@ -334,7 +317,6 @@ def hierarchical_error_analysis(target, predict, hierarchy, levels):
                     continue
 
                 else:
-                    # ORIGINAL: Target had children, but prediction stopped at parent (error)
                     parent_only += 1
                     per_level[node_level[p]]["parent_only_true"] += 1
 
@@ -437,8 +419,6 @@ def calculate_hierarchical_errors(target, predict, hierarchy, levels):
         for lvl in sorted(levels.keys())
     }
 
-    # error_nodes = {k: [] for k in errors}
-
     for n in hierarchy.nodes:
         fps = fp_matrix[:, n]
         if np.any(fps):
@@ -457,13 +437,13 @@ def calculate_hierarchical_errors(target, predict, hierarchy, levels):
             mask_add_desc = fps & ~mask_sibling & has_tgt_ancestor
             mask_branch_add = fps & ~mask_sibling & ~has_tgt_ancestor
 
-            errors["sibling_error"] += np.sum(mask_sibling)
-            errors["additional_descendants"] += np.sum(mask_add_desc)
-            errors["branch_added"] += np.sum(mask_branch_add)
+            errors["sibling_error"] += np.sum(mask_sibling).item()
+            errors["additional_descendants"] += np.sum(mask_add_desc).item()
+            errors["branch_added"] += np.sum(mask_branch_add).item()
 
-            per_level[node_level[n]]["sibling_error"] += np.sum(mask_sibling)
-            per_level[node_level[n]]["additional_descendants"] += np.sum(mask_add_desc)
-            per_level[node_level[n]]["branch_added"] += np.sum(mask_branch_add)
+            per_level[node_level[n]]["sibling_error"] += np.sum(mask_sibling).item()
+            per_level[node_level[n]]["additional_descendants"] += np.sum(mask_add_desc).item()
+            per_level[node_level[n]]["branch_added"] += np.sum(mask_branch_add).item()
 
         fns = fn_matrix[:, n]
         if np.any(fns):
@@ -494,37 +474,13 @@ def calculate_hierarchical_errors(target, predict, hierarchy, levels):
                 & (~has_prd_ancestor & ~has_prd_descendant)
             )
 
-            errors["ancestor_missing"] += np.sum(mask_anc_missing)
-            errors["descendant_missing"] += np.sum(mask_desc_missing)
-            errors["branch_omitted"] += np.sum(mask_branch_omit)
+            errors["ancestor_missing"] += np.sum(mask_anc_missing).item()
+            errors["descendant_missing"] += np.sum(mask_desc_missing).item()
+            errors["branch_omitted"] += np.sum(mask_branch_omit).item()
 
-            per_level[node_level[n]]["ancestor_missing"] += np.sum(mask_anc_missing)
-            per_level[node_level[n]]["descendant_missing"] += np.sum(mask_desc_missing)
-            per_level[node_level[n]]["branch_omitted"] += np.sum(mask_branch_omit)
-
-            #     if any(s in fn_indices for s in siblings[v]):
-            #         errors['sibling_error'] += 1
-            #         error_nodes['sibling_error'].append(v)
-            #     elif any(target[a] == 1 for a in ancestors[v]):
-            #         errors['additional_descendants'] += 1
-            #         error_nodes['additional_descendants'].append(v)
-            #     elif not any(target[a] == 1 for a in ancestors[v]):
-            #         errors['branch_added'] += 1
-            #         error_nodes['branch_added'].append(v)
-
-            # for v in fn_indices:
-            #     # if any(s in fp_indices for s in siblings[v]):
-            #     #     errors['sibling_error'] += 1
-            #     #     error_nodes['sibling_error'].append(v)
-            #     if any(predict[d] == 1 for d in descendants[v]):
-            #         errors['ancestor_missing'] += 1
-            #         error_nodes['ancestor_missing'].append(v)
-            #     elif any(predict[a] == 1 for a in ancestors[v]):
-            #         errors['descendant_missing'] += 1
-            #         error_nodes['descendant_missing'].append(v)
-            #     elif not any(predict[a] == 1 for a in ancestors[v]) and not any(predict[d] == 1 for d in descendants[v]):
-            #         errors['branch_omitted'] += 1
-            #         error_nodes['branch_omitted'].append(v)
+            per_level[node_level[n]]["ancestor_missing"] += np.sum(mask_anc_missing).item()
+            per_level[node_level[n]]["descendant_missing"] += np.sum(mask_desc_missing).item()
+            per_level[node_level[n]]["branch_omitted"] += np.sum(mask_branch_omit).item()
 
         tps = tp_matrix[:, n]
         if np.any(tps):
@@ -553,19 +509,19 @@ def calculate_hierarchical_errors(target, predict, hierarchy, levels):
             mask_desc_present = tps & has_tp_descendant
             mask_stopped_level = tps & ~has_prd_descendant_tp & ~has_tgt_descendant_tp
 
-            success["ancestor_present"] += np.sum(mask_anc_present)
-            success["descendants_present"] += np.sum(mask_desc_present)
-            success["descendants_correctly_omitted"] += np.sum(mask_stopped_level)
+            success["ancestor_present"] += np.sum(mask_anc_present).item()
+            success["descendants_present"] += np.sum(mask_desc_present).item()
+            success["descendants_correctly_omitted"] += np.sum(mask_stopped_level).item()
 
             success_per_level[node_level[n]]["ancestor_present"] += np.sum(
                 mask_anc_present
-            )
+            ).item()
             success_per_level[node_level[n]]["descendants_present"] += np.sum(
                 mask_desc_present
-            )
+            ).item()
             success_per_level[node_level[n]]["descendants_correctly_omitted"] += np.sum(
                 mask_stopped_level
-            )
+            ).item()
     total_errors_calculated = sum(errors.values())
     actual_wrong_predictions = np.sum(target != predict)
     errors["totals"] = total_errors_calculated
@@ -583,7 +539,6 @@ def calculate_hierarchical_errors(target, predict, hierarchy, levels):
 def conditional_probability(target, predict, hierarchy, alpha=1e-5):
     assert predict.shape == target.shape
     states = [(0, 0), (0, 1), (1, 0), (1, 1)]
-    # sorted_levels = sorted(levels.keys(), reverse=True)
 
     state_s = {}
     error_a = target != predict
@@ -598,10 +553,6 @@ def conditional_probability(target, predict, hierarchy, alpha=1e-5):
             continue
         for s in states:
             denominator = state_s[node][s].sum().item() + 2 * alpha
-            # if denominator == 0:
-            #     for a in ancestors:
-            #         cond_prob[(a, node, s)] = 0.0
-            #     continue
             for a in ancestors:
                 intersection = error_a[:, a] & state_s[node][s]
                 numerator = intersection.sum().item() + alpha
@@ -742,25 +693,11 @@ def node_importance(labels, hierarchy, norm=False):
         indices = np.where((target == 0))[0]
         if indices.size > 0:
             altered[indices] |= parents_array[indices]
-        # altered = target ^ np.random.binomial(1, 0.05, size=(size, size))
-
-        # flipped_mask = (target == 0) & (altered == 1)
-
-        # combined_parents = (flipped_mask @ parents_array) > 0
-
-        # altered |= combined_parents
 
         predict.extend(altered)
 
     predict = np.stack(predict, axis=0)
     target = np.repeat(labels, repeats=size, axis=0)
-
-    # cond_prob = conditional_probability(target, predict, hierarchy)
-    # error = error_propagation(target, predict, hierarchy, cond_prob)
-
-    # error = error_probability(target, predict, hierarchy)
-
-    # error = error_probability_optimized(target, predict, hierarchy, 0)
 
     error = serial_bitflip_error(target, predict, norm)
 
@@ -871,19 +808,6 @@ def plot_importance(weight, hierarchy, classes, path, threshold=0.0056):
     )
 
     pos = {node: (coords[0] * 3, coords[1]) for node, coords in pos.items()}
-
-    # pos = nx.drawing.layout.bfs_layout(hierarchy, start=181, align="vertical")
-    # for node in pos:
-    #     pos[node][0] *= 10
-
-    # levels = nx.single_source_shortest_path_length(hierarchy, 181)
-
-    # for node, level in levels.items():
-    #     hierarchy.nodes[node]['layer'] = level
-
-    # pos = nx.multipartite_layout(hierarchy, subset_key="layer", align="vertical")
-
-    # pos = {node: (coords[0], coords[1]) for node, coords in pos.items()}
 
     plt.figure(figsize=(12, 8))
     nx.draw_networkx_edges(subgraph, pos, alpha=0.2, edge_color="gray")

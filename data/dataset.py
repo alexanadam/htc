@@ -38,13 +38,10 @@ class TokenDataset(Dataset):
         if isinstance(self.texts, pd.DataFrame):
             row = self.texts.iloc[idx].astype(str).tolist()
             x = f"{self.tokenizer.sep_token}".join(row)
-            # x = self._compute_embeddings(x)
         else:
             x = self.texts[idx]
-            # x = self._compute_embeddings(self.texts[idx])
         if self.labels is not None:
             y = self.labels[idx]
-            # y = torch.tensor(self.labels[idx], dtype=torch.long)
             return x, y
         return x
 
